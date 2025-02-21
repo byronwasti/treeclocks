@@ -1,5 +1,5 @@
-use std::cmp::Ordering;
 use crate::IdTree;
+use std::cmp::Ordering;
 
 #[derive(Clone, Debug)]
 pub enum EventTree {
@@ -28,6 +28,17 @@ impl EventTree {
         match self {
             Leaf(val) => *val,
             SubTree(val, _, _) => *val,
+        }
+    }
+
+    fn depth(&self, at: u64) -> u64 {
+        use EventTree::*;
+        match self {
+            Leaf(_) => at + 1,
+            SubTree(_, l, r) => {
+                let at = at + 1;
+                l.depth(at).max(r.depth(at))
+            }
         }
     }
 
@@ -81,14 +92,17 @@ impl EventTree {
                 a,
                 Box::new(l0.join(l1.lift(b - a))),
                 Box::new(r0.join(r1.lift(b - a))),
-            ).norm(),
+            )
+            .norm(),
         }
     }
 
     pub fn increment(self, id: IdTree) -> Self {
         let fill = self.fill(&id);
         if fill == self {
-            self.grow(&id)
+            let N = self.depth(0);
+            let (tree, _) = self.grow(&id, N + 1);
+            tree
         } else {
             fill
         }
@@ -98,7 +112,7 @@ impl EventTree {
         match (id, self) {
             (IdTree::Zero, e) => e.clone(),
             (IdTree::One, e) => EventTree::Leaf(e.max()),
-            (_, n@EventTree::Leaf(val)) => n.clone(),
+            (_, n @ EventTree::Leaf(val)) => n.clone(),
             (IdTree::SubTree(il, ir), EventTree::SubTree(n, el, er)) => {
                 let il: &IdTree = il;
                 let ir: &IdTree = ir;
@@ -109,7 +123,8 @@ impl EventTree {
                             *n,
                             Box::new(EventTree::Leaf(el.max().max(er.min()))),
                             Box::new(er),
-                        ).norm()
+                        )
+                        .norm()
                     }
                     (il, &IdTree::One) => {
                         let el = el.fill(il);
@@ -117,22 +132,54 @@ impl EventTree {
                             *n,
                             Box::new(el.clone()),
                             Box::new(EventTree::Leaf(er.max().max(el.min()))),
-                        ).norm()
+                        )
+                        .norm()
                     }
                     (il, ir) => {
-                        EventTree::SubTree(
-                            *n,
-                            Box::new(el.fill(il)),
-                            Box::new(er.fill(ir)),
-                        ).norm()
+                        EventTree::SubTree(*n, Box::new(el.fill(il)), Box::new(er.fill(ir))).norm()
                     }
                 }
             }
         }
     }
 
-    fn grow(self, id: &IdTree) -> Self {
-        todo!()
+    fn grow(&self, id: &IdTree, N: u64) -> (Self, u64) {
+        match (id, self) {
+            (IdTree::One, EventTree::Leaf(val)) => (EventTree::Leaf(val + 1), 0),
+            (i, EventTree::Leaf(val)) => {
+                let (e, c) = EventTree::SubTree(
+                    *val,
+                    Box::new(EventTree::Leaf(0)),
+                    Box::new(EventTree::Leaf(0)),
+                )
+                .grow(id, N);
+                (e, c + N)
+            }
+            (IdTree::SubTree(il, ir), EventTree::SubTree(n, el, er)) => {
+                let il: &IdTree = il;
+                let ir: &IdTree = ir;
+                match (il, ir) {
+                    (&IdTree::Zero, ir) => {
+                        let (er, c) = er.grow(ir, N);
+                        (EventTree::SubTree(*n, el.clone(), Box::new(er)), c + 1)
+                    }
+                    (il, &IdTree::Zero) => {
+                        let (el, c) = el.grow(il, N);
+                        (EventTree::SubTree(*n, Box::new(el), er.clone()), c + 1)
+                    }
+                    (il, ir) => {
+                        let (erg, cr) = er.grow(ir, N);
+                        let (elg, cl) = el.grow(il, N);
+                        if cl < cr {
+                            (EventTree::SubTree(*n, Box::new(elg), er.clone()), cl + 1)
+                        } else {
+                            (EventTree::SubTree(*n, el.clone(), Box::new(erg)), cr + 1)
+                        }
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
