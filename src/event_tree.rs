@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use crate::IdTree;
 
 #[derive(Clone, Debug)]
 pub enum EventTree {
@@ -46,6 +47,22 @@ impl EventTree {
         }
     }
 
+    fn min(&self) -> u64 {
+        use EventTree::*;
+        match self {
+            Leaf(val) => *val,
+            SubTree(val, l, r) => *val,
+        }
+    }
+
+    fn max(&self) -> u64 {
+        use EventTree::*;
+        match self {
+            Leaf(val) => *val,
+            SubTree(val, l, r) => val + l.max().max(r.max()),
+        }
+    }
+
     pub fn join(self, other: Self) -> Self {
         use EventTree::*;
         match (self, other) {
@@ -66,6 +83,56 @@ impl EventTree {
                 Box::new(r0.join(r1.lift(b - a))),
             ).norm(),
         }
+    }
+
+    pub fn increment(self, id: IdTree) -> Self {
+        let fill = self.fill(&id);
+        if fill == self {
+            self.grow(&id)
+        } else {
+            fill
+        }
+    }
+
+    fn fill(&self, id: &IdTree) -> Self {
+        match (id, self) {
+            (IdTree::Zero, e) => e.clone(),
+            (IdTree::One, e) => EventTree::Leaf(e.max()),
+            (_, n@EventTree::Leaf(val)) => n.clone(),
+            (IdTree::SubTree(il, ir), EventTree::SubTree(n, el, er)) => {
+                let il: &IdTree = il;
+                let ir: &IdTree = ir;
+                match (il, ir) {
+                    (&IdTree::One, ir) => {
+                        let er = er.fill(ir);
+                        EventTree::SubTree(
+                            *n,
+                            Box::new(EventTree::Leaf(el.max().max(er.min()))),
+                            Box::new(er),
+                        ).norm()
+                    }
+                    (il, &IdTree::One) => {
+                        let el = el.fill(il);
+                        EventTree::SubTree(
+                            *n,
+                            Box::new(el.clone()),
+                            Box::new(EventTree::Leaf(er.max().max(el.min()))),
+                        ).norm()
+                    }
+                    (il, ir) => {
+                        EventTree::SubTree(
+                            *n,
+                            Box::new(el.fill(il)),
+                            Box::new(er.fill(ir)),
+                        ).norm()
+                    }
+                }
+            }
+        }
+    }
+
+    fn grow(self, id: &IdTree) -> Self {
+        todo!()
     }
 }
 
