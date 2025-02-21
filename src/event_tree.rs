@@ -1,6 +1,7 @@
 use crate::IdTree;
 use std::cmp::Ordering;
 
+/// A near one-to-one replication of the original paper.
 #[derive(Clone, Debug)]
 pub enum EventTree {
     Leaf(u64),
@@ -8,7 +9,46 @@ pub enum EventTree {
 }
 
 impl EventTree {
-    pub fn norm(&self) -> Self {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn join(self, other: Self) -> Self {
+        use EventTree::*;
+        match (self, other) {
+            (Leaf(a), Leaf(b)) => Leaf(a.max(b)),
+            (l @ Leaf(a), r @ SubTree(b, _, _))
+            | (l @ SubTree(a, _, _), r @ Leaf(b))
+            | (l @ SubTree(a, _, _), r @ SubTree(b, _, _))
+                if a > b =>
+            {
+                r.join(l)
+            }
+            (Leaf(a), SubTree(b, l, r)) | (SubTree(a, l, r), Leaf(b)) => {
+                SubTree(a, Box::new(l.lift(b - a)), Box::new(r.lift(b - a))).norm()
+            }
+            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => SubTree(
+                a,
+                Box::new(l0.join(l1.lift(b - a))),
+                Box::new(r0.join(r1.lift(b - a))),
+            )
+            .norm(),
+        }
+    }
+
+    pub fn event(self, id: &IdTree) -> Self {
+        let fill = self.fill(id);
+        if fill == self {
+            #[allow(non_snake_case)]
+            let N = self.depth(0);
+            let (tree, _) = self.grow(id, N + 1);
+            tree
+        } else {
+            fill
+        }
+    }
+
+    fn norm(&self) -> Self {
         use EventTree::*;
         match self {
             Leaf(_) => self.clone(),
@@ -23,7 +63,7 @@ impl EventTree {
         }
     }
 
-    pub fn value(&self) -> u64 {
+    fn value(&self) -> u64 {
         use EventTree::*;
         match self {
             Leaf(val) => *val,
@@ -62,7 +102,7 @@ impl EventTree {
         use EventTree::*;
         match self {
             Leaf(val) => *val,
-            SubTree(val, l, r) => *val,
+            SubTree(val, _, _) => *val,
         }
     }
 
@@ -74,45 +114,11 @@ impl EventTree {
         }
     }
 
-    pub fn join(self, other: Self) -> Self {
-        use EventTree::*;
-        match (self, other) {
-            (Leaf(a), Leaf(b)) => Leaf(a.max(b)),
-            (l @ Leaf(a), r @ SubTree(b, _, _))
-            | (l @ SubTree(a, _, _), r @ Leaf(b))
-            | (l @ SubTree(a, _, _), r @ SubTree(b, _, _))
-                if a > b =>
-            {
-                r.join(l)
-            }
-            (Leaf(a), SubTree(b, l, r)) | (SubTree(a, l, r), Leaf(b)) => {
-                SubTree(a, Box::new(l.lift(b - a)), Box::new(r.lift(b - a))).norm()
-            }
-            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => SubTree(
-                a,
-                Box::new(l0.join(l1.lift(b - a))),
-                Box::new(r0.join(r1.lift(b - a))),
-            )
-            .norm(),
-        }
-    }
-
-    pub fn increment(self, id: IdTree) -> Self {
-        let fill = self.fill(&id);
-        if fill == self {
-            let N = self.depth(0);
-            let (tree, _) = self.grow(&id, N + 1);
-            tree
-        } else {
-            fill
-        }
-    }
-
     fn fill(&self, id: &IdTree) -> Self {
         match (id, self) {
             (IdTree::Zero, e) => e.clone(),
             (IdTree::One, e) => EventTree::Leaf(e.max()),
-            (_, n @ EventTree::Leaf(val)) => n.clone(),
+            (_, n @ EventTree::Leaf(_)) => n.clone(),
             (IdTree::SubTree(il, ir), EventTree::SubTree(n, el, er)) => {
                 let il: &IdTree = il;
                 let ir: &IdTree = ir;
@@ -143,10 +149,11 @@ impl EventTree {
         }
     }
 
+    #[allow(non_snake_case)]
     fn grow(&self, id: &IdTree, N: u64) -> (Self, u64) {
         match (id, self) {
             (IdTree::One, EventTree::Leaf(val)) => (EventTree::Leaf(val + 1), 0),
-            (i, EventTree::Leaf(val)) => {
+            (_, EventTree::Leaf(val)) => {
                 let (e, c) = EventTree::SubTree(
                     *val,
                     Box::new(EventTree::Leaf(0)),
@@ -180,6 +187,12 @@ impl EventTree {
             }
             _ => unreachable!(),
         }
+    }
+}
+
+impl Default for EventTree {
+    fn default() -> Self {
+        EventTree::Leaf(0)
     }
 }
 
@@ -227,3 +240,13 @@ impl PartialEq for EventTree {
 }
 
 impl Eq for EventTree {}
+
+impl std::fmt::Display for EventTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        use EventTree::*;
+        match self {
+            Leaf(val) => write!(f, "{}", val),
+            SubTree(val, l, r) => write!(f, "({}, {}, {})", val, l, r),
+        }
+    }
+}

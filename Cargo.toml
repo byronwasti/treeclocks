@@ -2,5 +2,16 @@
 name = "treeclocks"
 version = "0.1.0"
 edition = "2021"
+readme = "README.md"
+authors = [
+    "Byron Wasti <dev@byronwasti.com>"
+]
+categories = ["data-structures"]
+keywords = ["distributed", "timestamps", "utility", "tree"]
+description = "Various Tree Clock data-structures and utilities"
+homepage = "https://github.com/byronwasti/treeclocks"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/byronwasti/treeclocks"
+publish = true
 
 [dependencies]

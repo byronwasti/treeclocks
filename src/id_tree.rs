@@ -1,11 +1,17 @@
-#[derive(Clone, Debug)]
+/// A near one-to-one replication of the original paper.
+#[derive(Clone, Debug, Default)]
 pub enum IdTree {
     Zero,
+    #[default]
     One,
     SubTree(Box<IdTree>, Box<IdTree>),
 }
 
 impl IdTree {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn norm(&self) -> Self {
         use IdTree::*;
         match self {
@@ -23,10 +29,6 @@ impl IdTree {
             }
             _ => self.clone(),
         }
-    }
-
-    fn is_zero(&self) -> bool {
-        matches!(self, IdTree::Zero)
     }
 
     pub fn fork(self) -> (Self, Self) {
@@ -68,6 +70,21 @@ impl IdTree {
                 let r = r0.join(*r1).norm();
                 SubTree(Box::new(l), Box::new(r)).norm()
             }
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        matches!(self, IdTree::Zero)
+    }
+}
+
+impl std::fmt::Display for IdTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        use IdTree::*;
+        match self {
+            Zero => write!(f, "0"),
+            One => write!(f, "1"),
+            SubTree(l, r) => write!(f, "({}, {})", l, r),
         }
     }
 }
