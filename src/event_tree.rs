@@ -1,4 +1,4 @@
-use std::cmp::{Ordering};
+use std::cmp::Ordering;
 
 #[derive(Clone, Debug)]
 pub enum EventTree {
@@ -17,11 +17,7 @@ impl EventTree {
 
                 let m = l.value().min(r.value());
 
-                SubTree(
-                    val + m,
-                    Box::new(l.sink(m)),
-                    Box::new(r.sink(m)),
-                )
+                SubTree(val + m, Box::new(l.sink(m)), Box::new(r.sink(m)))
             }
         }
     }
@@ -47,6 +43,28 @@ impl EventTree {
         match self {
             Leaf(val) => Leaf(val - m),
             SubTree(val, l, r) => SubTree(val - m, l, r),
+        }
+    }
+
+    pub fn join(self, other: Self) -> Self {
+        use EventTree::*;
+        match (self, other) {
+            (Leaf(a), Leaf(b)) => Leaf(a.max(b)),
+            (l @ Leaf(a), r @ SubTree(b, _, _))
+            | (l @ SubTree(a, _, _), r @ Leaf(b))
+            | (l @ SubTree(a, _, _), r @ SubTree(b, _, _))
+                if a > b =>
+            {
+                r.join(l)
+            }
+            (Leaf(a), SubTree(b, l, r)) | (SubTree(a, l, r), Leaf(b)) => {
+                SubTree(a, Box::new(l.lift(b - a)), Box::new(r.lift(b - a))).norm()
+            }
+            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => SubTree(
+                a,
+                Box::new(l0.join(l1.lift(b - a))),
+                Box::new(r0.join(r1.lift(b - a))),
+            ).norm(),
         }
     }
 }
