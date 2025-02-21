@@ -1,6 +1,6 @@
 # Tree Clocks
 
-Various Tree Clock data structures including the original Interval Tree Clock data structure from the 2008 paper "Interval Tree Clocks: A Logical Clock for Dynamic Systems"[pdf](https://gsd.di.uminho.pt/members/cbm/ps/itc2008.pdf) as well as extensions on the idea.
+Various Tree Clock data structures including the original Interval Tree Clock data structure from the 2008 paper "Interval Tree Clocks: A Logical Clock for Dynamic Systems"[[pdf](https://gsd.di.uminho.pt/members/cbm/ps/itc2008.pdf)] as well as extensions on the idea.
 
 ## Usage
 
