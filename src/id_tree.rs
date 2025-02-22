@@ -100,7 +100,7 @@ mod tests {
     fn test_fork_join() {
         let i0 = IdTree::new();
         let (i0, i1) = i0.fork();
-        let (i1, i2) = i1.fork();
+        let (_i1, i2) = i1.fork();
         let i0 = i0.join(i2);
 
         assert_eq!(&i0.to_string(), "(1, (0, 1))");

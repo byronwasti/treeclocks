@@ -15,12 +15,29 @@ Add to your `Cargo.toml`:
 
 `$ cargo add treeclocks`
 
-
-### `IdTree`, `EventTree`, `ItcIndex`
-
 ### `ItcPair`
 
-### `ItcNode`
+The `ItcPair` provides a higher-level abstraction around the `IdTree` and `EventTree` data-structures.
+
+```rust,no_run
+use treeclocks::ItcPair;
+
+let mut n0 = ItcPair::new();
+let mut n1 = n0.fork();
+let mut n2 = n1.fork();
+
+n0.event();
+n0.event();
+n2.event();
+
+// Sync to update the `EventTree` without merging `IdTree`s
+n1.sync(&n2);
+
+// Join to merge both `EventTree` and `IdTree`s
+n0.join(n2);
+
+assert!(n0.timestamp > n1.timestamp);
+```
 
 ## License
 

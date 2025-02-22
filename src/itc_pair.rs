@@ -102,7 +102,7 @@ mod tests {
         n2.sync(&n1);
 
         let t = n3.timestamp.clone();
-        let diff = t.difference(&n2.timestamp);
+        let diff = t.diff(&n2.timestamp);
 
         assert_eq!(&diff.to_string(), "(0, (0, 1, 0), (0, 0, 0))");
     }

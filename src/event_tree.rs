@@ -48,7 +48,8 @@ impl EventTree {
         }
     }
 
-    pub fn difference(self, other: &Self) -> Self {
+    /// Saturating subtraction of the other EventTree
+    pub fn diff(self, other: &Self) -> Self {
         use EventTree::*;
         match (self, other) {
             (Leaf(a), Leaf(b)) => Leaf(a.saturating_sub(*b)),
@@ -58,8 +59,8 @@ impl EventTree {
                 let diff = a.saturating_sub(*b);
                 SubTree(
                     0,
-                    Box::new(Leaf(diff).difference(l)),
-                    Box::new(Leaf(diff).difference(r)),
+                    Box::new(Leaf(diff).diff(l)),
+                    Box::new(Leaf(diff).diff(r)),
                 )
             }
             (Leaf(..), SubTree(..)) => Leaf(0),
@@ -67,8 +68,8 @@ impl EventTree {
                 let diff = a.saturating_sub(*b);
                 SubTree(
                     0,
-                    Box::new(l0.lift(diff).difference(l1)),
-                    Box::new(r0.lift(diff).difference(r1)),
+                    Box::new(l0.lift(diff).diff(l1)),
+                    Box::new(r0.lift(diff).diff(r1)),
                 )
             }
             (SubTree(..), SubTree(..)) => Leaf(0),
