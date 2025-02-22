@@ -48,6 +48,33 @@ impl EventTree {
         }
     }
 
+    pub fn difference(self, other: &Self) -> Self {
+        use EventTree::*;
+        match (self, other) {
+            (Leaf(a), Leaf(b)) => Leaf(a.saturating_sub(*b)),
+            (SubTree(a, l, r), Leaf(b)) if a >= *b => SubTree(a.saturating_sub(*b), l, r),
+            (SubTree(..), Leaf(..)) => Leaf(0),
+            (Leaf(a), SubTree(b, l, r)) if a >= *b => {
+                let diff = a.saturating_sub(*b);
+                SubTree(
+                    0,
+                    Box::new(Leaf(diff).difference(l)),
+                    Box::new(Leaf(diff).difference(r)),
+                )
+            }
+            (Leaf(..), SubTree(..)) => Leaf(0),
+            (SubTree(a, l0, r0), SubTree(b, l1, r1)) if a >= *b => {
+                let diff = a.saturating_sub(*b);
+                SubTree(
+                    0,
+                    Box::new(l0.lift(diff).difference(l1)),
+                    Box::new(r0.lift(diff).difference(r1)),
+                )
+            }
+            (SubTree(..), SubTree(..)) => Leaf(0),
+        }
+    }
+
     fn norm(&self) -> Self {
         use EventTree::*;
         match self {
@@ -55,10 +82,12 @@ impl EventTree {
             SubTree(val, l, r) => {
                 let l = l.norm();
                 let r = r.norm();
-
-                let m = l.value().min(r.value());
-
-                SubTree(val + m, Box::new(l.sink(m)), Box::new(r.sink(m)))
+                if matches!((&l, &r), (Leaf(m0), Leaf(m1)) if m0 == m1) {
+                    Leaf(val + l.value())
+                } else {
+                    let m = l.value().min(r.value());
+                    SubTree(val + m, Box::new(l.sink(m)), Box::new(r.sink(m)))
+                }
             }
         }
     }

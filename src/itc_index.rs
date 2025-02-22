@@ -28,12 +28,20 @@ impl ItcIndex {
 
         match (self, partial) {
             (ItcIndex::Unknown, _) => {}
-            (ItcIndex::Leaf(id), _) => {
+            (_, EventTree::Leaf(v)) if *v == 0 => {}
+            (ItcIndex::Leaf(id), EventTree::Leaf(_)) => {
                 ids.insert(id.clone());
             }
             (ItcIndex::SubTree(l, r), e @ EventTree::Leaf(_)) => {
                 ids.extend(l.query_recurse(e));
                 ids.extend(r.query_recurse(e));
+            }
+            (ItcIndex::Leaf(id), EventTree::SubTree(v, _, _)) if *v > 0 => {
+                ids.insert(id.clone());
+            }
+            (i @ ItcIndex::Leaf(_), EventTree::SubTree(_, l, r)) => {
+                ids.extend(i.query_recurse(l));
+                ids.extend(i.query_recurse(r));
             }
             (ItcIndex::SubTree(l, r), EventTree::SubTree(v, _, _)) if *v > 0 => {
                 ids.extend(l.query_recurse(&EventTree::Leaf(1)));

@@ -64,30 +64,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_basics() {
+    fn test_basic() {
         let mut n0 = ItcPair::new();
         let mut n1 = n0.fork();
-        let mut n2 = n0.fork();
-        let mut n3 = n1.fork();
-        let mut n4 = n1.fork();
+        let mut n2 = n1.fork();
 
         n0.event();
         n0.event();
-        n0.event();
+        n2.event();
+
+        n0.join(n2);
+
+        assert_eq!(&n0.to_string(), "(1, (0, 1)) | (0, 2, (0, 0, 1))");
+
         n1.event();
-        n3.event();
+        n0.sync(&n1);
 
-        n2.sync(&n0);
+        assert_eq!(&n0.to_string(), "(1, (0, 1)) | (1, 1, 0)");
+
+        n0.join(n1);
+        n0.event();
+
+        assert_eq!(&n0.to_string(), "1 | 2");
+    }
+
+    #[test]
+    fn test_difference() {
+        let mut n0 = ItcPair::new();
+        let mut n1 = n0.fork();
+        let mut n2 = n1.fork();
+        let mut n3 = n0.fork();
+
+        n0.event();
+        n3.sync(&n0);
+
+        n1.event();
         n2.sync(&n1);
-        n2.sync(&n3);
-        n4.sync(&n2);
 
-        //n2.increment();
+        let t = n3.timestamp.clone();
+        let diff = t.difference(&n2.timestamp);
 
-        println!("n0: {}", n0);
-        println!("n1: {}", n1);
-        println!("n2: {}", n2);
-        println!("n3: {}", n3);
-        println!("n4: {}", n4);
+        assert_eq!(&diff.to_string(), "(0, (0, 1, 0), (0, 0, 0))");
     }
 }

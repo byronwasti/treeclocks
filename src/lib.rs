@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod event_tree;
 mod id_tree;
 mod itc_index;
