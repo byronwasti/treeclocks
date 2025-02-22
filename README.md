@@ -7,6 +7,7 @@ Various Tree Clock data structures including the original Interval Tree Clock da
 
 - Implementation of the `IdTree` and `EventTree` from the original paper
 - A higher-level `ItcPair` abstraction for ease of use
+- A new `ItcIndex` to go from `EventTree` to `Set<IdTree>`
 
 ## Usage
 
@@ -38,6 +39,19 @@ n0.sync(&n1);
 
 ### `ItcIndex`
 
+```rust
+index = ItcIndex::new();
+
+
+
+diff = my_timestamp - other_timestamp;
+let partial = index.get_partial(&diff);
+partial.keys() -> Iter<T>
+
+index.sync(&partial_index);
+
+index.insert(IdTree, T);
+```
 
 
 ## License

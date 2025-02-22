@@ -1,5 +1,5 @@
 /// A near one-to-one replication of the original paper.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum IdTree {
     Zero,
     #[default]
@@ -8,29 +8,12 @@ pub enum IdTree {
 }
 
 impl IdTree {
+    /// Initial tree is the full interval (1)
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn norm(&self) -> Self {
-        use IdTree::*;
-        match self {
-            SubTree(l, r) => {
-                let l = l.norm();
-                let r = r.norm();
-
-                match (&l, &r) {
-                    (&Zero, &Zero) => return Zero,
-                    (&One, &One) => return One,
-                    _ => {}
-                }
-
-                SubTree(Box::new(l), Box::new(r))
-            }
-            _ => self.clone(),
-        }
-    }
-
+    /// Consumes to create id_left and id_right
     pub fn fork(self) -> (Self, Self) {
         use IdTree::*;
         match self {
@@ -59,6 +42,7 @@ impl IdTree {
         }
     }
 
+    /// Consumes to merge two ids
     pub fn join(self, other: Self) -> Self {
         use IdTree::*;
         match (self, other) {
@@ -70,6 +54,25 @@ impl IdTree {
                 let r = r0.join(*r1).norm();
                 SubTree(Box::new(l), Box::new(r)).norm()
             }
+        }
+    }
+
+    fn norm(&self) -> Self {
+        use IdTree::*;
+        match self {
+            SubTree(l, r) => {
+                let l = l.norm();
+                let r = r.norm();
+
+                match (&l, &r) {
+                    (&Zero, &Zero) => return Zero,
+                    (&One, &One) => return One,
+                    _ => {}
+                }
+
+                SubTree(Box::new(l), Box::new(r))
+            }
+            _ => self.clone(),
         }
     }
 
@@ -86,5 +89,20 @@ impl std::fmt::Display for IdTree {
             One => write!(f, "1"),
             SubTree(l, r) => write!(f, "({}, {})", l, r),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fork_join() {
+        let i0 = IdTree::new();
+        let (i0, i1) = i0.fork();
+        let (i1, i2) = i1.fork();
+        let i0 = i0.join(i2);
+
+        assert_eq!(&i0.to_string(), "(1, (0, 1))");
     }
 }

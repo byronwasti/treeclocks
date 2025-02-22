@@ -1,9 +1,9 @@
 mod event_tree;
 mod id_tree;
-mod pair;
+mod itc_index;
+mod itc_pair;
 
 pub use event_tree::EventTree;
 pub use id_tree::IdTree;
-pub use pair::ItcPair;
-
-pub struct IntervalTreeClockDataTree {}
+pub use itc_index::ItcIndex;
+pub use itc_pair::ItcPair;

@@ -4,8 +4,8 @@ use crate::{EventTree, IdTree};
 /// abstraction than the original paper.
 #[derive(Debug, Clone, Default)]
 pub struct ItcPair {
-    id: IdTree,
-    timestamp: EventTree,
+    pub id: IdTree,
+    pub timestamp: EventTree,
 }
 
 impl ItcPair {
@@ -18,14 +18,6 @@ impl ItcPair {
             id,
             timestamp: EventTree::new(),
         }
-    }
-
-    pub fn id(&self) -> &IdTree {
-        &self.id
-    }
-
-    pub fn timestamp(&self) -> &EventTree {
-        &self.timestamp
     }
 
     pub fn fork(&mut self) -> ItcPair {
@@ -50,7 +42,7 @@ impl ItcPair {
     }
 
     pub fn sync(&mut self, other: &ItcPair) {
-        let other = other.timestamp().clone();
+        let other = other.timestamp.clone();
         let timestamp = std::mem::take(&mut self.timestamp);
         self.timestamp = timestamp.join(other);
     }
