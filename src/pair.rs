@@ -20,11 +20,12 @@ impl ItcPair {
         }
     }
 
-    pub fn fork_id(&mut self) -> IdTree {
-        let id = std::mem::take(&mut self.id);
-        let (my_id, other) = id.fork();
-        self.id = my_id;
-        other
+    pub fn id(&self) -> &IdTree {
+        &self.id
+    }
+
+    pub fn timestamp(&self) -> &EventTree {
+        &self.timestamp
     }
 
     pub fn fork(&mut self) -> ItcPair {
@@ -34,14 +35,24 @@ impl ItcPair {
         }
     }
 
-    pub fn join(&mut self, other: &ItcPair) {
+    pub fn fork_id(&mut self) -> IdTree {
+        let id = std::mem::take(&mut self.id);
+        let (my_id, other) = id.fork();
+        self.id = my_id;
+        other
+    }
+
+    pub fn join(&mut self, other: ItcPair) {
+        self.sync(&other);
+
+        let id = std::mem::take(&mut self.id);
+        self.id = id.join(other.id);
+    }
+
+    pub fn sync(&mut self, other: &ItcPair) {
         let other = other.timestamp().clone();
         let timestamp = std::mem::take(&mut self.timestamp);
         self.timestamp = timestamp.join(other);
-    }
-
-    pub fn timestamp(&self) -> &EventTree {
-        &self.timestamp
     }
 
     pub fn event(&mut self) {
@@ -74,10 +85,10 @@ mod tests {
         n1.event();
         n3.event();
 
-        n2.join(&n0);
-        n2.join(&n1);
-        n2.join(&n3);
-        n4.join(&n2);
+        n2.sync(&n0);
+        n2.sync(&n1);
+        n2.sync(&n3);
+        n4.sync(&n2);
 
         //n2.increment();
 
