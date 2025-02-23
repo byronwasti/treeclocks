@@ -2,6 +2,7 @@ use crate::{EventTree, IdTree, ItcIndex, ItcPair};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UpdatePacket<T> {
     pub timestamp: EventTree,
     pub key_value_pairs: Vec<(IdTree, T)>,
