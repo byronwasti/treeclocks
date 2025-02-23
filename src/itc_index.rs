@@ -68,9 +68,21 @@ impl ItcIndex {
         }
     }
 
-    pub fn insert(self, id: &IdTree) -> Self {
-        let partial = id.to_owned();
-        let id = Rc::new(id.to_owned());
+    /// Designed to accept either `IdTree` or `Rc<IdTree>`, in case you want
+    /// to track removals of `IdTree`s for garbage collection.
+    ///
+    /// # Example
+    /// ```rust
+    /// use treeclocks::{ItcIndex, IdTree};
+    /// use std::rc::Rc;
+    ///
+    /// let index = ItcIndex::new();
+    /// let index = index.insert(IdTree::new());
+    /// let index = index.insert(Rc::new(IdTree::new()));
+    /// ```
+    pub fn insert<T: Into<Rc<IdTree>> + std::borrow::Borrow<IdTree> + Clone>(self, id: T) -> Self {
+        let partial: IdTree = id.borrow().clone();
+        let id: Rc<IdTree> = id.into();
         self.insert_recurse(id, partial)
     }
 
@@ -106,5 +118,28 @@ impl std::fmt::Display for ItcIndex {
             Leaf(id) => write!(f, "{}", id),
             SubTree(l, r) => write!(f, "[{}, {}]", l, r),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ItcPair;
+
+    #[test]
+    fn test_inserts() {
+        let index = ItcIndex::new();
+        let mut i0 = ItcPair::new();
+        let mut i1 = i0.fork();
+
+        let index = index.insert(i0.id.clone());
+
+        let i0_save = Rc::new(i0.id.clone());
+        let index = index.insert(i0_save.clone());
+
+        i1.join(i0);
+        index.insert(i1.id.clone());
+
+        assert_eq!(Rc::strong_count(&i0_save), 1);
     }
 }

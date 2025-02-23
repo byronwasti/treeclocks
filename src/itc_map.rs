@@ -1,5 +1,6 @@
 use crate::{EventTree, IdTree, ItcIndex, ItcPair};
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -12,6 +13,7 @@ pub struct ItcMap<T> {
     map: HashMap<IdTree, T>,
     pair: ItcPair,
     index: ItcIndex,
+    gc: HashSet<Rc<IdTree>>,
 }
 
 impl<T: Clone> ItcMap<T> {
@@ -35,10 +37,8 @@ impl<T: Clone> ItcMap<T> {
     pub fn fork(&mut self) -> ItcMap<T> {
         let mut new_pair = self.pair.fork();
 
-        let index = std::mem::take(&mut self.index);
-        let index = index.insert(&self.pair.id);
-        let index = index.insert(&new_pair.id);
-        self.index = index;
+        self.insert_id(self.pair.id.clone());
+        self.insert_id(new_pair.id.clone());
 
         new_pair.event();
         self.pair.event();
@@ -47,6 +47,7 @@ impl<T: Clone> ItcMap<T> {
             map: self.map.clone(),
             pair: new_pair,
             index: self.index.clone(),
+            gc: self.gc.clone(),
         }
     }
 
@@ -76,30 +77,53 @@ impl<T: Clone> ItcMap<T> {
         // with a time greater than our own are applied.
         let diff = packet.timestamp.diff(self.timestamp());
 
-        let index = packet
+        let tmp_index = packet
             .key_value_pairs
             .iter()
             .map(|(x, _)| x)
-            .fold(ItcIndex::new(), |acc, id| acc.insert(id));
+            .fold(ItcIndex::new(), |acc, id| acc.insert(id.clone()));
 
-        let valid_ids: HashSet<IdTree> = index.query(&diff).collect();
+        let valid_ids: HashSet<IdTree> = tmp_index.query(&diff).collect();
 
-        let mut index = std::mem::take(&mut self.index);
         let mut updated = 0;
         for (id, value) in packet.key_value_pairs.iter() {
             if !valid_ids.contains(id) {
                 continue;
             }
 
-            index = index.insert(id);
+            self.insert_id(id.clone());
             self.map.insert(id.to_owned(), value.clone());
             updated += 1;
         }
 
-        self.index = index;
         self.pair.sync(&diff);
 
         updated
+    }
+
+    fn insert_id(&mut self, id: IdTree) {
+        {
+            let index = std::mem::take(&mut self.index);
+            let id = Rc::new(id);
+            let index = index.insert(id.clone());
+            self.index = index;
+            self.gc.insert(id);
+        }
+        self.gc()
+    }
+
+    fn gc(&mut self) {
+        let mut to_remove = vec![];
+        for id in self.gc.iter() {
+            if Rc::strong_count(id) == 1 {
+                to_remove.push(id.clone());
+            }
+        }
+
+        to_remove.drain(..).for_each(|id| {
+            self.gc.remove(&id);
+            self.map.remove(&id);
+        })
     }
 }
 
@@ -107,11 +131,13 @@ impl<T> Default for ItcMap<T> {
     fn default() -> ItcMap<T> {
         let pair = ItcPair::new();
         let index = ItcIndex::new();
-        let index = index.insert(&pair.id);
+        let index = index.insert(pair.id.clone());
         ItcMap {
             map: HashMap::new(),
             pair,
             index,
+            // TODO: Populate?
+            gc: HashSet::new(),
         }
     }
 }
