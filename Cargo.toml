@@ -15,3 +15,7 @@ repository = "https://github.com/byronwasti/treeclocks"
 publish = true
 
 [dependencies]
+serde = { version = "1.0.218", features = ["derive"], optional = true }
+
+[features]
+serde = ["dep:serde"]

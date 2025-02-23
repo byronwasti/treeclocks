@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 
 /// A near one-to-one replication of the original paper.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EventTree {
     Leaf(u64),
     SubTree(u64, Box<EventTree>, Box<EventTree>),

@@ -3,6 +3,7 @@ use crate::{EventTree, IdTree};
 /// Higher level construct around the Id Tree and Event Tree primitives. Provides a higher level
 /// abstraction than the original paper.
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItcPair {
     pub id: IdTree,
     pub timestamp: EventTree,
