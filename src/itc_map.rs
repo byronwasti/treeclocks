@@ -149,19 +149,15 @@ mod tests {
     #[test]
     fn test_basic() {
         let mut my_map = ItcMap::new();
-        // bootstrap a peer by sending `peer_map`
         let mut peer_map = my_map.fork();
 
-        // Set value for your ID
         my_map.set(42);
 
-        // Sync with peer
         let my_time = my_map.timestamp().clone();
         let peer_time = peer_map.timestamp();
         let diff = my_time.diff(&peer_time);
 
         if let Some(update) = my_map.query(&diff) {
-            // Apply the minimal update required to sync the two maps
             peer_map.apply(update);
         }
 

@@ -54,16 +54,17 @@ let mut peer_map = my_map.fork();
 // Set value for your ID
 my_map.set(42);
 
-// Sync with peer
+// Find event difference with peer via timestamps
 let my_time = my_map.timestamp().clone();
 let peer_time = peer_map.timestamp();
 let diff = my_time.diff(&peer_time);
 
+// Apply the minimal update required to sync the two maps
 if let Some(update) = my_map.query(&diff) {
-    // Apply is the minimal update required to sync the two maps
     peer_map.apply(update);
 }
 
+// Peer_map now contains the new values
 let ids: Vec<_> = peer_map.get_all().collect();
 assert_eq!(&ids, &[&42]);
 ```
