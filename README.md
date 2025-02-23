@@ -31,12 +31,41 @@ n0.event();
 n2.event();
 
 // Sync to update the `EventTree` without merging `IdTree`s
-n1.sync(&n2);
+n1.sync(&n2.timestamp);
 
 // Join to merge both `EventTree` and `IdTree`s
 n0.join(n2);
 
 assert!(n0.timestamp > n1.timestamp);
+```
+
+### `ItcMap`
+
+The `ItcMap` provides an in-memory key-value store with operations to keep the map in sync with minimal overhead in a distributed system.
+
+```rust
+use treeclocks::ItcMap;
+
+let mut my_map = ItcMap::new();
+// bootstrap a peer by sending `peer_map`
+let mut peer_map = my_map.fork();
+
+
+// Set value for your ID
+my_map.set(42);
+
+// Sync with peer
+let my_time = my_map.timestamp().clone();
+let peer_time = peer_map.timestamp();
+let diff = my_time.diff(&peer_time);
+
+if let Some(update) = my_map.query(&diff) {
+    // Apply is the minimal update required to sync the two maps
+    peer_map.apply(update);
+}
+
+let ids: Vec<_> = peer_map.get_all().collect();
+assert_eq!(&ids, &[&42]);
 ```
 
 ## License

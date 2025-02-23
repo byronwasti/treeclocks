@@ -68,9 +68,9 @@ impl ItcIndex {
         }
     }
 
-    pub fn insert(self, id: IdTree) -> Self {
-        let partial = id.clone();
-        let id = Rc::new(id);
+    pub fn insert(self, id: &IdTree) -> Self {
+        let partial = id.to_owned();
+        let id = Rc::new(id.to_owned());
         self.insert_recurse(id, partial)
     }
 
@@ -94,6 +94,17 @@ impl ItcIndex {
                     Box::new(r0.insert_recurse(id.clone(), *r1)),
                 ),
             }
+        }
+    }
+}
+
+impl std::fmt::Display for ItcIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        use ItcIndex::*;
+        match self {
+            Unknown => write!(f, "?"),
+            Leaf(id) => write!(f, "{}", id),
+            SubTree(l, r) => write!(f, "[{}, {}]", l, r),
         }
     }
 }

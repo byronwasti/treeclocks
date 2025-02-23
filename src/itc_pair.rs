@@ -36,14 +36,14 @@ impl ItcPair {
     }
 
     pub fn join(&mut self, other: ItcPair) {
-        self.sync(&other);
+        self.sync(&other.timestamp);
 
         let id = std::mem::take(&mut self.id);
         self.id = id.join(other.id);
     }
 
-    pub fn sync(&mut self, other: &ItcPair) {
-        let other = other.timestamp.clone();
+    pub fn sync(&mut self, other: &EventTree) {
+        let other = other.clone();
         let timestamp = std::mem::take(&mut self.timestamp);
         self.timestamp = timestamp.join(other);
     }
@@ -79,7 +79,7 @@ mod tests {
         assert_eq!(&n0.to_string(), "(1, (0, 1)) | (0, 2, (0, 0, 1))");
 
         n1.event();
-        n0.sync(&n1);
+        n0.sync(&n1.timestamp);
 
         assert_eq!(&n0.to_string(), "(1, (0, 1)) | (1, 1, 0)");
 
@@ -97,10 +97,10 @@ mod tests {
         let mut n3 = n0.fork();
 
         n0.event();
-        n3.sync(&n0);
+        n3.sync(&n0.timestamp);
 
         n1.event();
-        n2.sync(&n1);
+        n2.sync(&n1.timestamp);
 
         let t = n3.timestamp.clone();
         let diff = t.diff(&n2.timestamp);
