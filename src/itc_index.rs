@@ -1,6 +1,6 @@
 use crate::{EventTree, IdTree};
 use std::collections::HashSet;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// An ItcIndex provides lookup of all associated timestamp IDs for a given EventTree, as well as
 /// various merging capabilities with partial-trees.
@@ -8,7 +8,7 @@ use std::rc::Rc;
 pub enum ItcIndex {
     #[default]
     Unknown,
-    Leaf(Rc<IdTree>),
+    Leaf(Arc<IdTree>),
     SubTree(Box<ItcIndex>, Box<ItcIndex>),
 }
 
@@ -23,7 +23,7 @@ impl ItcIndex {
             .map(|r| r.as_ref().to_owned())
     }
 
-    fn query_recurse(&self, partial: &EventTree) -> HashSet<Rc<IdTree>> {
+    fn query_recurse(&self, partial: &EventTree) -> HashSet<Arc<IdTree>> {
         let mut ids = HashSet::new();
 
         match (self, partial) {
@@ -68,25 +68,25 @@ impl ItcIndex {
         }
     }
 
-    /// Designed to accept either `IdTree` or `Rc<IdTree>`, in case you want
+    /// Designed to accept either `IdTree` or `Arc<IdTree>`, in case you want
     /// to track removals of `IdTree`s for garbage collection.
     ///
     /// # Example
     /// ```rust
     /// use treeclocks::{ItcIndex, IdTree};
-    /// use std::rc::Rc;
+    /// use std::rc::Arc;
     ///
     /// let index = ItcIndex::new();
     /// let index = index.insert(IdTree::new());
-    /// let index = index.insert(Rc::new(IdTree::new()));
+    /// let index = index.insert(Arc::new(IdTree::new()));
     /// ```
-    pub fn insert<T: Into<Rc<IdTree>> + std::borrow::Borrow<IdTree> + Clone>(self, id: T) -> Self {
+    pub fn insert<T: Into<Arc<IdTree>> + std::borrow::Borrow<IdTree> + Clone>(self, id: T) -> Self {
         let partial: IdTree = id.borrow().clone();
-        let id: Rc<IdTree> = id.into();
+        let id: Arc<IdTree> = id.into();
         self.insert_recurse(id, partial)
     }
 
-    fn insert_recurse(self, id: Rc<IdTree>, partial: IdTree) -> Self {
+    fn insert_recurse(self, id: Arc<IdTree>, partial: IdTree) -> Self {
         if matches!(partial, IdTree::Zero) {
             self
         } else {
@@ -134,12 +134,12 @@ mod tests {
 
         let index = index.insert(i0.id.clone());
 
-        let i0_save = Rc::new(i0.id.clone());
+        let i0_save = Arc::new(i0.id.clone());
         let index = index.insert(i0_save.clone());
 
         i1.join(i0);
         index.insert(i1.id.clone());
 
-        assert_eq!(Rc::strong_count(&i0_save), 1);
+        assert_eq!(Arc::strong_count(&i0_save), 1);
     }
 }

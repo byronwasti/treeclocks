@@ -1,6 +1,6 @@
 use crate::{EventTree, IdTree, ItcIndex, ItcPair};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -13,7 +13,7 @@ pub struct ItcMap<T> {
     map: HashMap<IdTree, T>,
     pair: ItcPair,
     index: ItcIndex,
-    gc: HashSet<Rc<IdTree>>,
+    gc: HashSet<Arc<IdTree>>,
 }
 
 impl<T: Clone> ItcMap<T> {
@@ -105,7 +105,7 @@ impl<T: Clone> ItcMap<T> {
     fn insert_id(&mut self, id: IdTree) -> Vec<IdTree> {
         {
             let index = std::mem::take(&mut self.index);
-            let id = Rc::new(id);
+            let id = Arc::new(id);
             let index = index.insert(id.clone());
             self.index = index;
             self.gc.insert(id);
@@ -116,7 +116,7 @@ impl<T: Clone> ItcMap<T> {
     fn gc(&mut self) -> Vec<IdTree> {
         let mut to_remove = vec![];
         for id in self.gc.iter() {
-            if Rc::strong_count(id) == 1 {
+            if Arc::strong_count(id) == 1 {
                 to_remove.push(id.clone());
             }
         }
