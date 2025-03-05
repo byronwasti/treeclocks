@@ -3,7 +3,7 @@
 mod event_tree;
 mod id_tree;
 mod itc_index;
-mod itc_map;
+pub mod itc_map;
 mod itc_pair;
 
 pub use event_tree::EventTree;

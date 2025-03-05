@@ -72,6 +72,7 @@ impl<T: Clone> ItcMap<T> {
         }
     }
 
+    /// NOTE: Use `.insert_id()` to recieve a list of deleted Ids
     pub fn apply(&mut self, packet: UpdatePacket<T>) -> usize {
         // We need to check to ensure that only key updates
         // with a time greater than our own are applied.
@@ -101,7 +102,7 @@ impl<T: Clone> ItcMap<T> {
         updated
     }
 
-    fn insert_id(&mut self, id: IdTree) {
+    fn insert_id(&mut self, id: IdTree) -> Vec<IdTree> {
         {
             let index = std::mem::take(&mut self.index);
             let id = Rc::new(id);
@@ -112,7 +113,7 @@ impl<T: Clone> ItcMap<T> {
         self.gc()
     }
 
-    fn gc(&mut self) {
+    fn gc(&mut self) -> Vec<IdTree> {
         let mut to_remove = vec![];
         for id in self.gc.iter() {
             if Rc::strong_count(id) == 1 {
@@ -120,10 +121,17 @@ impl<T: Clone> ItcMap<T> {
             }
         }
 
+        let res = to_remove
+            .iter()
+            .map(|x| x.as_ref().clone())
+            .collect::<Vec<IdTree>>();
+
         to_remove.drain(..).for_each(|id| {
             self.gc.remove(&id);
             self.map.remove(&id);
-        })
+        });
+
+        res
     }
 }
 
