@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct UpdatePacket<T> {
+pub struct Patch<T> {
     pub timestamp: EventTree,
     pub key_value_pairs: Vec<(IdTree, T)>,
 }
@@ -55,7 +55,7 @@ impl<T: Clone> ItcMap<T> {
         &self.pair.timestamp
     }
 
-    pub fn query(&self, timestamp: &EventTree) -> Option<UpdatePacket<T>> {
+    pub fn query(&self, timestamp: &EventTree) -> Option<Patch<T>> {
         let key_value_pairs = self
             .index
             .query(timestamp)
@@ -65,7 +65,7 @@ impl<T: Clone> ItcMap<T> {
         if key_value_pairs.is_empty() {
             None
         } else {
-            Some(UpdatePacket {
+            Some(Patch {
                 timestamp: self.timestamp().clone(),
                 key_value_pairs,
             })
@@ -73,7 +73,7 @@ impl<T: Clone> ItcMap<T> {
     }
 
     /// NOTE: Use `.insert_id()` to recieve a list of deleted Ids
-    pub fn apply(&mut self, packet: UpdatePacket<T>) -> usize {
+    pub fn apply(&mut self, packet: Patch<T>) -> usize {
         // We need to check to ensure that only key updates
         // with a time greater than our own are applied.
         let diff = packet.timestamp.diff(self.timestamp());
