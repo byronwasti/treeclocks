@@ -1,151 +1,267 @@
-use crate::{EventTree, IdTree, ItcIndex, ItcPair};
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use crate::{EventTree, IdTree};
+
+type Count = usize;
+type Index = usize;
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Patch<T> {
-    pub timestamp: EventTree,
-    pub key_value_pairs: Vec<(IdTree, T)>,
-}
-
 pub struct ItcMap<T> {
-    map: HashMap<IdTree, T>,
-    pair: ItcPair,
+    timestamp: EventTree,
+    data: Vec<Option<(Count, IdTree, T)>>,
     index: ItcIndex,
-    gc: HashSet<Arc<IdTree>>,
 }
 
-impl<T: Clone> ItcMap<T> {
-    pub fn new() -> ItcMap<T> {
-        ItcMap::default()
-    }
-
-    pub fn set(&mut self, value: T) {
-        self.map.insert(self.pair.id.clone(), value);
-        self.pair.event();
-    }
-
-    pub fn get_all(&self) -> impl Iterator<Item = &T> {
-        self.map.values()
+impl<T> ItcMap<T> {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn get(&self, id: &IdTree) -> Option<&T> {
-        self.map.get(id)
+        self.index
+            .get(&id)
+            .map(|idx| self.data[idx].as_ref())
+            .flatten()
+            .map(|(_, sid, d)| if id == sid { Some(d) } else { None })
+            .flatten()
     }
 
-    pub fn fork(&mut self) -> ItcMap<T> {
-        let mut new_pair = self.pair.fork();
-
-        self.insert_id(self.pair.id.clone());
-        self.insert_id(new_pair.id.clone());
-
-        new_pair.event();
-        self.pair.event();
-
-        ItcMap {
-            map: self.map.clone(),
-            pair: new_pair,
-            index: self.index.clone(),
-            gc: self.gc.clone(),
-        }
-    }
-
-    pub fn timestamp(&self) -> &EventTree {
-        &self.pair.timestamp
-    }
-
-    pub fn query(&self, timestamp: &EventTree) -> Option<Patch<T>> {
-        let key_value_pairs = self
-            .index
-            .query(timestamp)
-            .filter_map(|id| self.map.get(&id).map(|val| (id, val.to_owned())))
-            .collect::<Vec<_>>();
-
-        if key_value_pairs.is_empty() {
-            None
+    pub fn insert(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
+        self.update_timestamp(&id);
+        let idx = if let Some(idx) = self.index.get(&id) {
+            if let Some(v) = &mut self.data[idx] {
+                v.1 = id.clone();
+                v.2 = value;
+            } else {
+                unreachable!()
+            }
+            idx
         } else {
-            Some(Patch {
-                timestamp: self.timestamp().clone(),
-                key_value_pairs,
-            })
-        }
-    }
+            let idx = self.allocate(id.clone(), value);
+            idx
+        };
 
-    /// NOTE: Use `.insert_id()` to recieve a list of deleted Ids
-    pub fn apply(&mut self, packet: Patch<T>) -> usize {
-        // We need to check to ensure that only key updates
-        // with a time greater than our own are applied.
-        let diff = packet.timestamp.diff(self.timestamp());
-
-        let tmp_index = packet
-            .key_value_pairs
-            .iter()
-            .map(|(x, _)| x)
-            .fold(ItcIndex::new(), |acc, id| acc.insert(id.clone()));
-
-        let valid_ids: HashSet<IdTree> = tmp_index.query(&diff).collect();
-
-        let mut updated = 0;
-        for (id, value) in packet.key_value_pairs.iter() {
-            if !valid_ids.contains(id) {
-                continue;
+        let removed_idxs = self.update_index(&id, idx);
+        let mut removed = vec![];
+        for idx in removed_idxs.iter() {
+            if let Some(d) = self.data[*idx].take() {
+                removed.push((d.1, d.2))
             }
-
-            self.insert_id(id.clone());
-            self.map.insert(id.to_owned(), value.clone());
-            updated += 1;
         }
-
-        self.pair.sync(&diff);
-
-        updated
+        removed
     }
 
-    fn insert_id(&mut self, id: IdTree) -> Vec<IdTree> {
-        {
-            let index = std::mem::take(&mut self.index);
-            let id = Arc::new(id);
-            let index = index.insert(id.clone());
-            self.index = index;
-            self.gc.insert(id);
+    fn allocate(&mut self, id: IdTree, value: T) -> Index {
+        if let Some(idx) = self.data.iter().position(Option::is_none) {
+            self.data[idx] = Some((0, id, value));
+            idx
+        } else {
+            self.data.push(Some((0, id, value)));
+            self.data.len() - 1
         }
-        self.gc()
     }
 
-    fn gc(&mut self) -> Vec<IdTree> {
+    fn update_timestamp(&mut self, id: &IdTree) {
+        let ts = std::mem::take(&mut self.timestamp);
+        let ts = ts.event(id);
+        self.timestamp = ts;
+    }
+
+    fn update_index(&mut self, id: &IdTree, idx: Index) -> Vec<Index> {
+        let index = std::mem::take(&mut self.index);
+        let (index, incremented_idxs, decremented_idxs) = index.insert(id, idx);
+        self.index = index;
+
+        for ix in incremented_idxs {
+            if let Some(v) = &mut self.data[ix] {
+                v.0 += 1;
+            }
+        }
+
         let mut to_remove = vec![];
-        for id in self.gc.iter() {
-            if Arc::strong_count(id) == 1 {
-                to_remove.push(id.clone());
+        for dx in decremented_idxs {
+            if let Some(v) = &mut self.data[dx] {
+                v.0 -= 1;
+                if v.0 == 0 {
+                    to_remove.push(dx);
+                }
             }
         }
 
-        let res = to_remove
-            .iter()
-            .map(|x| x.as_ref().clone())
-            .collect::<Vec<IdTree>>();
-
-        to_remove.drain(..).for_each(|id| {
-            self.gc.remove(&id);
-            self.map.remove(&id);
-        });
-
-        res
+        to_remove
     }
 }
 
 impl<T> Default for ItcMap<T> {
-    fn default() -> ItcMap<T> {
-        let pair = ItcPair::new();
-        let index = ItcIndex::new();
-        let index = index.insert(pair.id.clone());
-        ItcMap {
-            map: HashMap::new(),
-            pair,
-            index,
-            // TODO: Populate?
-            gc: HashSet::new(),
+    fn default() -> Self {
+        Self {
+            timestamp: EventTree::new(),
+            data: vec![],
+            index: ItcIndex::Unknown,
+        }
+    }
+}
+
+/// An ItcIndex provides lookup of all associated timestamp IDs for a given EventTree, as well as
+/// various merging capabilities with partial-trees.
+#[derive(Debug, Clone, Default)]
+enum ItcIndex {
+    #[default]
+    Unknown,
+    Leaf(usize),
+    SubTree(Box<ItcIndex>, Box<ItcIndex>),
+}
+
+impl ItcIndex {
+    fn get(&self, id: &IdTree) -> Option<Index> {
+        match (self, id) {
+            (ItcIndex::Unknown, _) => None,
+            (_, IdTree::Zero) => None,
+            (ItcIndex::Leaf(idx), IdTree::One) => Some(*idx),
+            (ItcIndex::SubTree(l0, r0), IdTree::SubTree(l1, r1)) => {
+                if let Some(idx) = l0.get(l1) {
+                    Some(idx)
+                } else {
+                    r0.get(r1)
+                }
+            }
+            // TODO: Should we handle partial-match cases? Are there any situations where our
+            // IdTree we're looking up is _almsot_ valid?
+            _ => None,
+        }
+    }
+
+    // Returns increments and Decrements
+    fn insert(self, id: &IdTree, idx: Index) -> (ItcIndex, Vec<Index>, Vec<Index>) {
+        match (self, id) {
+            (s @ _, IdTree::Zero) => (s, vec![], vec![]),
+            (ItcIndex::Unknown, IdTree::One) => (ItcIndex::Leaf(idx), vec![idx], vec![]),
+            (ItcIndex::Unknown, IdTree::SubTree(l, r)) => {
+                let (l, mut la, _) = ItcIndex::Unknown.insert(l, idx);
+                let (r, mut ra, _) = ItcIndex::Unknown.insert(r, idx);
+                la.append(&mut ra);
+                (ItcIndex::SubTree(Box::new(l), Box::new(r)), la, vec![])
+            }
+            (ItcIndex::Leaf(old), IdTree::One) => (ItcIndex::Leaf(idx), vec![idx], vec![old]),
+            (ItcIndex::Leaf(old), IdTree::SubTree(l, r)) => {
+                let (l, mut la, mut lr) = ItcIndex::Leaf(old).insert(l, idx);
+                let (r, mut ra, mut rr) = ItcIndex::Leaf(old).insert(r, idx);
+                la.append(&mut ra);
+                la.push(old);
+                lr.append(&mut rr);
+                (ItcIndex::SubTree(Box::new(l), Box::new(r)), la, lr)
+            }
+            (ItcIndex::SubTree(l0, r0), IdTree::One) => {
+                let (_, mut la, mut lr) = l0.insert(&IdTree::One, idx);
+                let (_, mut ra, mut rr) = r0.insert(&IdTree::One, idx);
+                la.append(&mut ra);
+                lr.append(&mut rr);
+                (ItcIndex::Leaf(idx), la, lr)
+            }
+            (ItcIndex::SubTree(l0, r0), IdTree::SubTree(l1, r1)) => {
+                let (l, mut la, mut lr) = l0.insert(l1, idx);
+                let (r, mut ra, mut rr) = r0.insert(r1, idx);
+                la.append(&mut ra);
+                lr.append(&mut rr);
+                (ItcIndex::SubTree(Box::new(l), Box::new(r)), la, lr)
+            }
+        }
+    }
+
+    /*
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn get(&self, id: IdTree) -> usize {
+        todo!()
+    }
+
+    pub fn query(&self, partial: &EventTree) -> impl Iterator<Item = usize> {
+        self.query_recurse(partial).into_iter()
+    }
+
+    fn query_recurse(&self, partial: &EventTree) -> HashSet<usize> {
+        let mut idxs = HashSet::new();
+
+        match (self, partial) {
+            (ItcIndex::Unknown, _) => {}
+            (_, EventTree::Leaf(v)) if *v == 0 => {}
+            (ItcIndex::Leaf(idx), EventTree::Leaf(_)) => {
+                idxs.insert(*idx);
+            }
+            (ItcIndex::SubTree(l, r), e @ EventTree::Leaf(_)) => {
+                idxs.extend(l.query_recurse(e));
+                idxs.extend(r.query_recurse(e));
+            }
+            (ItcIndex::Leaf(idx), EventTree::SubTree(v, _, _)) if *v > 0 => {
+                idxs.insert(*idx);
+            }
+            (i @ ItcIndex::Leaf(_), EventTree::SubTree(_, l, r)) => {
+                idxs.extend(i.query_recurse(l));
+                idxs.extend(i.query_recurse(r));
+            }
+            (ItcIndex::SubTree(l, r), EventTree::SubTree(v, _, _)) if *v > 0 => {
+                idxs.extend(l.query_recurse(&EventTree::Leaf(1)));
+                idxs.extend(r.query_recurse(&EventTree::Leaf(1)));
+            }
+            (ItcIndex::SubTree(l0, r0), EventTree::SubTree(_, l1, r1)) => {
+                idxs.extend(l0.query_recurse(l1));
+                idxs.extend(r0.query_recurse(r1));
+            }
+        }
+
+        idxs
+    }
+
+    /*
+    pub fn apply(self, partial: ItcIndex) -> Self {
+        match (self, partial) {
+            (s, ItcIndex::Unknown) => s,
+            (ItcIndex::Unknown, p) => p,
+            (_, p @ ItcIndex::Leaf(_)) => p,
+            (ItcIndex::Leaf(_), p @ ItcIndex::SubTree(_, _)) => p,
+            (ItcIndex::SubTree(l0, r0), ItcIndex::SubTree(l1, r1)) => {
+                ItcIndex::SubTree(Box::new(l0.apply(*l1)), Box::new(r0.apply(*r1)))
+            }
+        }
+    }
+    */
+
+    pub fn insert(self, idx: usize, id: IdTree) -> (Self, Vec<usize>) {
+        self.insert_recurse(idx, id)
+    }
+
+    fn insert_recurse(self, idx: usize, partial: IdTree) -> ItcIndex {
+        if matches!(partial, IdTree::Zero) {
+            self
+        } else {
+            match (self, partial) {
+                (_, IdTree::Zero) => unreachable!(),
+                (_, IdTree::One) => ItcIndex::Leaf(idx),
+                (ItcIndex::Unknown, IdTree::SubTree(l, r)) => ItcIndex::SubTree(
+                    Box::new(ItcIndex::Unknown.insert_recurse(idx, *l)),
+                    Box::new(ItcIndex::Unknown.insert_recurse(idx, *r)),
+                ),
+                (ItcIndex::Leaf(id0), IdTree::SubTree(l, r)) => ItcIndex::SubTree(
+                    Box::new(ItcIndex::Leaf(id0).insert_recurse(idx, *l)),
+                    Box::new(ItcIndex::Leaf(id0).insert_recurse(idx, *r)),
+                ),
+                (ItcIndex::SubTree(l0, r0), IdTree::SubTree(l1, r1)) => ItcIndex::SubTree(
+                    Box::new(l0.insert_recurse(idx, *l1)),
+                    Box::new(r0.insert_recurse(idx, *r1)),
+                ),
+            }
+        }
+    }
+    */
+}
+
+impl std::fmt::Display for ItcIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        use ItcIndex::*;
+        match self {
+            Unknown => write!(f, "?"),
+            Leaf(id) => write!(f, "{}", id),
+            SubTree(l, r) => write!(f, "[{}, {}]", l, r),
         }
     }
 }
@@ -153,23 +269,35 @@ impl<T> Default for ItcMap<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{EventTree, IdTree, ItcPair};
 
     #[test]
-    fn test_basic() {
-        let mut my_map = ItcMap::new();
-        let mut peer_map = my_map.fork();
+    fn test_inserts() {
+        let mut map: ItcMap<&'static str> = ItcMap::new();
+        let mut i0 = IdTree::new();
+        map.insert(i0.clone(), "test");
 
-        my_map.set(42);
+        let (mut i0, mut i1) = i0.fork();
+        map.insert(i1.clone(), "world");
+        map.insert(i0.clone(), "test2");
 
-        let my_time = my_map.timestamp().clone();
-        let peer_time = peer_map.timestamp();
-        let diff = my_time.diff(&peer_time);
+        assert_eq!(map.get(&i0), Some(&"test2"));
+        assert_eq!(map.get(&i1), Some(&"world"));
+    }
 
-        if let Some(update) = my_map.query(&diff) {
-            peer_map.apply(update);
-        }
+    #[test]
+    fn test_removals() {
+        let mut map: ItcMap<&'static str> = ItcMap::new();
+        let mut i0 = IdTree::new();
+        map.insert(i0.clone(), "test");
 
-        let ids: Vec<_> = peer_map.get_all().collect();
-        assert_eq!(&ids, &[&42]);
+        let (mut i0, mut i1) = i0.fork();
+        map.insert(i1.clone(), "world");
+
+        let mut i0 = i0.join(i1.clone());
+        map.insert(i0.clone(), "test2");
+
+        assert_eq!(map.get(&i0), Some(&"test2"));
+        assert_eq!(map.get(&i1), None);
     }
 }

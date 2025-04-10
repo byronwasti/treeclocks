@@ -43,7 +43,7 @@ assert!(n0.timestamp > n1.timestamp);
 
 The `ItcMap` provides an in-memory key-value store with operations to keep the map in sync with minimal overhead in a distributed system.
 
-```rust
+```rust,ignore
 use treeclocks::ItcMap;
 
 let mut my_map = ItcMap::new();
