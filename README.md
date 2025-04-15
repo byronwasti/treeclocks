@@ -43,30 +43,25 @@ assert!(n0.timestamp > n1.timestamp);
 
 The `ItcMap` provides an in-memory key-value store with operations to keep the map in sync with minimal overhead in a distributed system.
 
-```rust,ignore
-use treeclocks::ItcMap;
+```rust
+use treeclocks::{IdTree, ItcMap};
 
-let mut my_map = ItcMap::new();
-// bootstrap a peer by sending `peer_map`
-let mut peer_map = my_map.fork();
+let mut map_a = ItcMap::new();
+let mut map_b = ItcMap::new();
 
+let id_a = IdTree::new();
+let (id_a, id_b) = id_a.fork();
 
-// Set value for your ID
-my_map.set(42);
+map_a.insert(id_a.clone(), 207);
+map_b.insert(id_b.clone(), 324);
 
-// Find event difference with peer via timestamps
-let my_time = my_map.timestamp().clone();
-let peer_time = peer_map.timestamp();
-let diff = my_time.diff(&peer_time);
+let patch_for_b = map_a.diff(map_b.timestamp());
+let patch_for_a = map_b.diff(map_a.timestamp());
 
-// Apply the minimal update required to sync the two maps
-if let Some(update) = my_map.query(&diff) {
-    peer_map.apply(update);
-}
+map_a.apply(patch_for_a);
+map_b.apply(patch_for_b);
 
-// Peer_map now contains the new values
-let ids: Vec<_> = peer_map.get_all().collect();
-assert_eq!(&ids, &[&42]);
+assert_eq!(map_a, map_b)
 ```
 
 ## License

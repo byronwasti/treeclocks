@@ -1,5 +1,5 @@
 use crate::{EventTree, IdTree};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 type Count = usize;
 type Index = usize;
@@ -62,7 +62,8 @@ impl<T: Clone> ItcMap<T> {
         let time_diff = self.timestamp.clone().diff(&timestamp);
         let idxs = self.index.query(&time_diff);
 
-        let inner = idxs.filter_map(|idx| self.data[idx].as_ref())
+        let inner = idxs
+            .filter_map(|idx| self.data[idx].as_ref())
             .map(|(_, id, d)| (id.clone(), d.clone()))
             .collect();
         Patch {
@@ -74,8 +75,12 @@ impl<T: Clone> ItcMap<T> {
     pub fn apply(&mut self, mut patch: Patch<T>) -> Vec<(IdTree, T)> {
         let mut removed = vec![];
 
-        let time_diff = patch.timestamp.diff(&self.timestamp); 
-        for (id, val) in patch.inner.drain(..).filter(|(id, _)| time_diff.contains(&id)) {
+        let time_diff = patch.timestamp.diff(&self.timestamp);
+        for (id, val) in patch
+            .inner
+            .drain(..)
+            .filter(|(id, _)| time_diff.contains(&id))
+        {
             let mut rem = self.insert_without_event(id, val);
             removed.append(&mut rem);
         }
@@ -124,6 +129,30 @@ impl<T: Clone> ItcMap<T> {
         }
 
         to_remove
+    }
+}
+
+impl<T: PartialEq> PartialEq for ItcMap<T> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.timestamp != other.timestamp {
+            return false;
+        }
+
+        let map_a = self
+            .data
+            .iter()
+            .filter_map(|x| x.as_ref())
+            .map(|(_, id, d)| (id, d))
+            .collect::<HashMap<_, _>>();
+
+        let map_b = other
+            .data
+            .iter()
+            .filter_map(|x| x.as_ref())
+            .map(|(_, id, d)| (id, d))
+            .collect::<HashMap<_, _>>();
+
+        map_a == map_b
     }
 }
 
@@ -260,15 +289,15 @@ pub struct Patch<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EventTree, IdTree, ItcPair};
+    use crate::IdTree;
 
     #[test]
     fn test_inserts() {
         let mut map: ItcMap<&'static str> = ItcMap::new();
-        let mut i0 = IdTree::new();
+        let i0 = IdTree::new();
         map.insert(i0.clone(), "test");
 
-        let (mut i0, mut i1) = i0.fork();
+        let (i0, i1) = i0.fork();
         map.insert(i1.clone(), "world");
         map.insert(i0.clone(), "test2");
 
@@ -279,13 +308,13 @@ mod tests {
     #[test]
     fn test_removals() {
         let mut map: ItcMap<&'static str> = ItcMap::new();
-        let mut i0 = IdTree::new();
+        let i0 = IdTree::new();
         map.insert(i0.clone(), "test");
 
-        let (mut i0, mut i1) = i0.fork();
+        let (i0, i1) = i0.fork();
         map.insert(i1.clone(), "world");
 
-        let mut i0 = i0.join(i1.clone());
+        let i0 = i0.join(i1.clone());
         map.insert(i0.clone(), "test2");
 
         assert_eq!(map.get(&i0), Some(&"test2"));
@@ -300,7 +329,7 @@ mod tests {
 
         let i0 = IdTree::new();
         let (il, ir) = i0.fork();
-        let (ill, ilr) = il.fork();
+        let (ill, _ilr) = il.fork();
         let (irl, irr) = ir.fork();
 
         ma.insert(ill.clone(), 2);
