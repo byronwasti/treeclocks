@@ -5,6 +5,7 @@ type Count = usize;
 type Index = usize;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItcMap<T> {
     timestamp: EventTree,
     data: Vec<Option<(Count, IdTree, T)>>,
@@ -281,6 +282,8 @@ impl std::fmt::Display for ItcIndex {
     }
 }
 
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Patch<T> {
     timestamp: EventTree,
     inner: Vec<(IdTree, T)>,
