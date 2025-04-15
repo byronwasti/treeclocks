@@ -170,6 +170,7 @@ impl<T> Default for ItcMap<T> {
 /// An ItcIndex provides lookup of all associated timestamp IDs for a given EventTree, as well as
 /// various merging capabilities with partial-trees.
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum ItcIndex {
     #[default]
     Unknown,
