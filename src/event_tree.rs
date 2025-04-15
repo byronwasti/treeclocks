@@ -77,6 +77,15 @@ impl EventTree {
         }
     }
 
+    pub fn contains(&self, id: &IdTree) -> bool {
+        match (self, id) {
+            (EventTree::Leaf(0), _) | (_, IdTree::Zero) => false,
+            (EventTree::Leaf(_), _) => true,
+            (EventTree::SubTree(0, l, r), id@IdTree::One) => l.contains(&id) || r.contains(id),
+            (EventTree::SubTree(_, _, _), _) => true,
+        }
+    }
+
     fn norm(&self) -> Self {
         use EventTree::*;
         match self {
