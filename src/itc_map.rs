@@ -30,9 +30,22 @@ impl<T: Clone> ItcMap<T> {
             .flatten()
     }
 
+    pub fn len(&self) -> usize {
+        self.data.iter().filter_map(|x| x.as_ref()).count()
+    }
+
     pub fn insert(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
         self.update_timestamp(&id);
         self.insert_without_event(id, value)
+    }
+
+    pub fn event(&mut self, id: &IdTree) -> bool {
+        if self.index.get(&id).is_some() {
+            self.update_timestamp(&id);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn insert_without_event(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
