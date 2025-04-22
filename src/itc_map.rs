@@ -1,5 +1,6 @@
 use crate::{EventTree, IdTree};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 type Count = usize;
 type Index = usize;
@@ -12,7 +13,7 @@ pub struct ItcMap<T> {
     index: ItcIndex,
 }
 
-impl<T: Clone> ItcMap<T> {
+impl<T> ItcMap<T> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -32,6 +33,13 @@ impl<T: Clone> ItcMap<T> {
 
     pub fn len(&self) -> usize {
         self.data.iter().filter_map(|x| x.as_ref()).count()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=(&IdTree, &T)> {
+        self.data
+            .iter()
+            .flat_map(|x| x.as_ref())
+            .map(|(_, id, d)|  (id, d))
     }
 
     pub fn insert(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
@@ -70,20 +78,6 @@ impl<T: Clone> ItcMap<T> {
             }
         }
         removed
-    }
-
-    pub fn diff(&self, timestamp: &EventTree) -> Patch<T> {
-        let time_diff = self.timestamp.clone().diff(&timestamp);
-        let idxs = self.index.query(&time_diff);
-
-        let inner = idxs
-            .filter_map(|idx| self.data[idx].as_ref())
-            .map(|(_, id, d)| (id.clone(), d.clone()))
-            .collect();
-        Patch {
-            timestamp: self.timestamp.clone(),
-            inner,
-        }
     }
 
     pub fn apply(&mut self, mut patch: Patch<T>) -> Vec<(IdTree, T)> {
@@ -146,6 +140,22 @@ impl<T: Clone> ItcMap<T> {
     }
 }
 
+impl<T: Clone> ItcMap<T> {
+    pub fn diff(&self, timestamp: &EventTree) -> Patch<T> {
+        let time_diff = self.timestamp.clone().diff(&timestamp);
+        let idxs = self.index.query(&time_diff);
+
+        let inner = idxs
+            .filter_map(|idx| self.data[idx].as_ref())
+            .map(|(_, id, d)| (id.clone(), d.clone()))
+            .collect();
+        Patch {
+            timestamp: self.timestamp.clone(),
+            inner,
+        }
+    }
+}
+
 impl<T: PartialEq> PartialEq for ItcMap<T> {
     fn eq(&self, other: &Self) -> bool {
         if self.timestamp != other.timestamp {
@@ -177,6 +187,13 @@ impl<T> Default for ItcMap<T> {
             data: vec![],
             index: ItcIndex::Unknown,
         }
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for ItcMap<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let data = self.iter().map(|(id, d)| format!("{id}: {d}")).collect::<Vec<_>>().join(", ");
+        write!(f, "{} - {} - {{ {} }}", self.timestamp, self.index, data)
     }
 }
 
@@ -285,8 +302,8 @@ impl ItcIndex {
     }
 }
 
-impl std::fmt::Display for ItcIndex {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl fmt::Display for ItcIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         use ItcIndex::*;
         match self {
             Unknown => write!(f, "?"),
