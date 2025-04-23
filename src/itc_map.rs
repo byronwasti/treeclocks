@@ -387,4 +387,23 @@ mod tests {
         assert_eq!(mb.get(&ill), Some(&2));
         assert_eq!(mb.get(&irl), Some(&1)); // 2 <3
     }
+
+    #[test]
+    fn test_patches_2() {
+        let mut ma: ItcMap<i32> = ItcMap::new();
+        let mut mb: ItcMap<i32> = ItcMap::new();
+
+        let i0 = IdTree::new();
+        ma.insert(i0.clone(), 1);
+        ma.insert(i0.clone(), 2);
+
+        let (i0, i1) = i0.fork();
+        ma.insert(i0.clone(), 3);
+        let patch = ma.diff(mb.timestamp());
+
+        mb.insert(i1.clone(), 99);
+        mb.apply(patch);
+
+        assert_eq!(mb.timestamp().to_string(), "(1, 2, 0)");
+    }
 }
