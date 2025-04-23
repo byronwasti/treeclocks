@@ -2,14 +2,11 @@ use crate::{EventTree, IdTree};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-type Count = usize;
-type Index = usize;
-
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItcMap<T> {
     timestamp: EventTree,
-    data: Vec<Option<(Count, IdTree, T)>>,
+    data: Vec<Option<(IdTree, T)>>,
     index: ItcIndex,
 }
 
@@ -24,22 +21,24 @@ impl<T> ItcMap<T> {
 
     pub fn get(&self, id: &IdTree) -> Option<&T> {
         self.index
-            .get(&id)
-            .map(|idx| self.data[idx].as_ref())
-            .flatten()
-            .map(|(_, sid, d)| if id == sid { Some(d) } else { None })
-            .flatten()
+            .get(id)
+            .and_then(|idx| self.data[idx].as_ref())
+            .and_then(|(sid, d)| if id == sid { Some(d) } else { None })
     }
 
     pub fn len(&self) -> usize {
         self.data.iter().filter_map(|x| x.as_ref()).count()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=(&IdTree, &T)> {
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&IdTree, &T)> {
         self.data
             .iter()
             .flat_map(|x| x.as_ref())
-            .map(|(_, id, d)|  (id, d))
+            .map(|(i, d)| (i, d))
     }
 
     pub fn insert(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
@@ -48,8 +47,8 @@ impl<T> ItcMap<T> {
     }
 
     pub fn event(&mut self, id: &IdTree) -> bool {
-        if self.index.get(&id).is_some() {
-            self.update_timestamp(&id);
+        if self.index.get(id).is_some() {
+            self.update_timestamp(id);
             true
         } else {
             false
@@ -59,24 +58,29 @@ impl<T> ItcMap<T> {
     pub fn insert_without_event(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
         let idx = if let Some(idx) = self.index.get(&id) {
             if let Some(v) = &mut self.data[idx] {
-                v.1 = id.clone();
-                v.2 = value;
+                v.0 = id.clone();
+                v.1 = value;
             } else {
-                unreachable!()
+                panic!("Fundamental logic bug in ItcMap.");
             }
             idx
         } else {
-            let idx = self.allocate(id.clone(), value);
-            idx
+            self.allocate(id.clone(), value)
         };
 
-        let removed_idxs = self.update_index(&id, idx);
+        let index = std::mem::take(&mut self.index);
+        let (mut index, idxs_to_remove) = index.insert(&id, idx);
+
         let mut removed = vec![];
-        for idx in removed_idxs.iter() {
-            if let Some(d) = self.data[*idx].take() {
-                removed.push((d.1, d.2))
+        for idx in idxs_to_remove {
+            if let Some(d) = self.data[idx].take() {
+                index = index.purge(&d.0, idx);
+                removed.push((d.0, d.1));
             }
         }
+
+        self.index = index;
+
         removed
     }
 
@@ -87,7 +91,7 @@ impl<T> ItcMap<T> {
         for (id, val) in patch
             .inner
             .drain(..)
-            .filter(|(id, _)| time_diff.contains(&id))
+            .filter(|(id, _)| time_diff.contains(id))
         {
             let mut rem = self.insert_without_event(id, val);
             removed.append(&mut rem);
@@ -99,12 +103,12 @@ impl<T> ItcMap<T> {
         removed
     }
 
-    fn allocate(&mut self, id: IdTree, value: T) -> Index {
+    fn allocate(&mut self, id: IdTree, value: T) -> usize {
         if let Some(idx) = self.data.iter().position(Option::is_none) {
-            self.data[idx] = Some((0, id, value));
+            self.data[idx] = Some((id, value));
             idx
         } else {
-            self.data.push(Some((0, id, value)));
+            self.data.push(Some((id, value)));
             self.data.len() - 1
         }
     }
@@ -114,40 +118,16 @@ impl<T> ItcMap<T> {
         let ts = ts.event(id);
         self.timestamp = ts;
     }
-
-    fn update_index(&mut self, id: &IdTree, idx: Index) -> Vec<Index> {
-        let index = std::mem::take(&mut self.index);
-        let (index, incremented_idxs, decremented_idxs) = index.insert(id, idx);
-        self.index = index;
-
-        for ix in incremented_idxs {
-            if let Some(v) = &mut self.data[ix] {
-                v.0 += 1;
-            }
-        }
-
-        let mut to_remove = vec![];
-        for dx in decremented_idxs {
-            if let Some(v) = &mut self.data[dx] {
-                v.0 -= 1;
-                if v.0 == 0 {
-                    to_remove.push(dx);
-                }
-            }
-        }
-
-        to_remove
-    }
 }
 
 impl<T: Clone> ItcMap<T> {
     pub fn diff(&self, timestamp: &EventTree) -> Patch<T> {
-        let time_diff = self.timestamp.clone().diff(&timestamp);
+        let time_diff = self.timestamp.clone().diff(timestamp);
         let idxs = self.index.query(&time_diff);
 
         let inner = idxs
             .filter_map(|idx| self.data[idx].as_ref())
-            .map(|(_, id, d)| (id.clone(), d.clone()))
+            .map(|(id, d)| (id.clone(), d.clone()))
             .collect();
         Patch {
             timestamp: self.timestamp.clone(),
@@ -166,14 +146,14 @@ impl<T: PartialEq> PartialEq for ItcMap<T> {
             .data
             .iter()
             .filter_map(|x| x.as_ref())
-            .map(|(_, id, d)| (id, d))
+            .map(|(id, d)| (id, d))
             .collect::<HashMap<_, _>>();
 
         let map_b = other
             .data
             .iter()
             .filter_map(|x| x.as_ref())
-            .map(|(_, id, d)| (id, d))
+            .map(|(id, d)| (id, d))
             .collect::<HashMap<_, _>>();
 
         map_a == map_b
@@ -192,7 +172,11 @@ impl<T> Default for ItcMap<T> {
 
 impl<T: fmt::Display> fmt::Display for ItcMap<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        let data = self.iter().map(|(id, d)| format!("{id}: {d}")).collect::<Vec<_>>().join(", ");
+        let data = self
+            .iter()
+            .map(|(id, d)| format!("{id}: {d}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         write!(f, "{} - {} - {{ {} }}", self.timestamp, self.index, data)
     }
 }
@@ -209,7 +193,7 @@ enum ItcIndex {
 }
 
 impl ItcIndex {
-    fn get(&self, id: &IdTree) -> Option<Index> {
+    fn get(&self, id: &IdTree) -> Option<usize> {
         match (self, id) {
             (ItcIndex::Unknown, _) => None,
             (_, IdTree::Zero) => None,
@@ -228,39 +212,78 @@ impl ItcIndex {
     }
 
     // Returns increments and Decrements
-    fn insert(self, id: &IdTree, idx: Index) -> (ItcIndex, Vec<Index>, Vec<Index>) {
+    fn insert(self, id: &IdTree, idx: usize) -> (ItcIndex, HashSet<usize>) {
         match (self, id) {
-            (s @ _, IdTree::Zero) => (s, vec![], vec![]),
-            (ItcIndex::Unknown, IdTree::One) => (ItcIndex::Leaf(idx), vec![idx], vec![]),
+            (s, IdTree::Zero) => (s, HashSet::new()),
+            (ItcIndex::Unknown, IdTree::One) => (ItcIndex::Leaf(idx), HashSet::new()),
             (ItcIndex::Unknown, IdTree::SubTree(l, r)) => {
-                let (l, mut la, _) = ItcIndex::Unknown.insert(l, idx);
-                let (r, mut ra, _) = ItcIndex::Unknown.insert(r, idx);
-                la.append(&mut ra);
-                (ItcIndex::SubTree(Box::new(l), Box::new(r)), la, vec![])
+                let (l, _) = ItcIndex::Unknown.insert(l, idx);
+                let (r, _) = ItcIndex::Unknown.insert(r, idx);
+                (
+                    ItcIndex::SubTree(Box::new(l.norm()), Box::new(r.norm())),
+                    HashSet::new(),
+                )
             }
-            (ItcIndex::Leaf(old), IdTree::One) => (ItcIndex::Leaf(idx), vec![idx], vec![old]),
+            (ItcIndex::Leaf(old), IdTree::One) => {
+                let mut d = HashSet::new();
+                d.insert(old);
+                (ItcIndex::Leaf(idx), d)
+            }
             (ItcIndex::Leaf(old), IdTree::SubTree(l, r)) => {
-                let (l, mut la, mut lr) = ItcIndex::Leaf(old).insert(l, idx);
-                let (r, mut ra, mut rr) = ItcIndex::Leaf(old).insert(r, idx);
-                la.append(&mut ra);
-                la.push(old);
-                lr.append(&mut rr);
-                (ItcIndex::SubTree(Box::new(l), Box::new(r)), la, lr)
+                let (l, _) = ItcIndex::Unknown.insert(l, idx);
+                let (r, _) = ItcIndex::Unknown.insert(r, idx);
+                let mut d = HashSet::new();
+                d.insert(old);
+                (ItcIndex::SubTree(Box::new(l.norm()), Box::new(r.norm())), d)
             }
             (ItcIndex::SubTree(l0, r0), IdTree::One) => {
-                let (_, mut la, mut lr) = l0.insert(&IdTree::One, idx);
-                let (_, mut ra, mut rr) = r0.insert(&IdTree::One, idx);
-                la.append(&mut ra);
-                lr.append(&mut rr);
-                (ItcIndex::Leaf(idx), la, lr)
+                let (_, mut lr) = l0.insert(&IdTree::One, idx);
+                let (_, rr) = r0.insert(&IdTree::One, idx);
+                lr.extend(rr);
+                (ItcIndex::Leaf(idx), lr)
             }
             (ItcIndex::SubTree(l0, r0), IdTree::SubTree(l1, r1)) => {
-                let (l, mut la, mut lr) = l0.insert(l1, idx);
-                let (r, mut ra, mut rr) = r0.insert(r1, idx);
-                la.append(&mut ra);
-                lr.append(&mut rr);
-                (ItcIndex::SubTree(Box::new(l), Box::new(r)), la, lr)
+                let (l, mut lr) = l0.insert(l1, idx);
+                let (r, rr) = r0.insert(r1, idx);
+                lr.extend(rr);
+                (
+                    ItcIndex::SubTree(Box::new(l.norm()), Box::new(r.norm())),
+                    lr,
+                )
             }
+        }
+    }
+
+    fn norm(self) -> Self {
+        use ItcIndex::*;
+        match self {
+            SubTree(l, r) => {
+                let l = l.norm();
+                let r = r.norm();
+
+                match (&l, &r) {
+                    (Unknown, Unknown) => return Unknown,
+                    (Leaf(il), Leaf(ir)) if il == ir => return Leaf(*il),
+                    _ => {}
+                }
+                SubTree(Box::new(l), Box::new(r))
+            }
+            _ => self,
+        }
+    }
+
+    fn purge(self, id: &IdTree, idx: usize) -> ItcIndex {
+        match (self, id) {
+            (s @ ItcIndex::Unknown, _) | (s, IdTree::Zero) => s,
+            (ItcIndex::Leaf(old), IdTree::One | IdTree::SubTree(..)) if old == idx => {
+                ItcIndex::Unknown
+            }
+            (ItcIndex::SubTree(l0, r0), IdTree::SubTree(l1, r1)) => {
+                let l = l0.purge(l1, idx);
+                let r = r0.purge(r1, idx);
+                ItcIndex::SubTree(Box::new(l), Box::new(r))
+            }
+            (s, _) => s,
         }
     }
 
