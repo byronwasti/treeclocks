@@ -408,6 +408,7 @@ mod tests {
 
         assert_eq!(&format!("{}", mb.timestamp()), "(0, (0, 1, 0), (1, 0, 2))");
         assert_eq!(mb.get(&ill), Some(&2));
+        assert_eq!(mb.get(&irr), Some(&5));
         assert_eq!(mb.get(&irl), Some(&1)); // 2 <3
     }
 
