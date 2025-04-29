@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItcMap<T> {
     timestamp: EventTree,
     data: Vec<Option<(IdTree, T)>>,

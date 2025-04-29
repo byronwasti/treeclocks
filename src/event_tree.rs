@@ -241,28 +241,61 @@ impl PartialOrd for EventTree {
         use EventTree::*;
         match (self, other) {
             (Leaf(a), Leaf(b)) => Some(a.cmp(b)),
-            (Leaf(a), SubTree(b, _, _)) if a <= b => Some(Ordering::Less),
-            (SubTree(a, _, _), Leaf(b)) if a >= b => Some(Ordering::Greater),
-            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => {
-                // TODO: These clones seem avoidable
-                let l = l0.clone().lift(*a).partial_cmp(&l1.clone().lift(*b));
-                let r = r0.clone().lift(*a).partial_cmp(&r1.clone().lift(*b));
-
-                if l.is_none() || r.is_none() {
-                    None
-                } else {
-                    let l = l.unwrap();
-                    let r = r.unwrap();
-                    use Ordering::*;
-                    match (l, r) {
-                        (Greater, Less) | (Less, Greater) => None,
-                        (Less, _) | (_, Less) => Some(Less),
-                        (Greater, _) | (_, Greater) => Some(Greater),
-                        (Equal, Equal) => Some(Equal),
+            (Leaf(a), SubTree(b, l, r)) => {
+                // TODO: Is there a way to avoid these clones? Ditto below.
+                let l_cmp = Leaf(*a).partial_cmp(&l.clone().lift(*b))?;
+                let r_cmp = Leaf(*a).partial_cmp(&r.clone().lift(*b))?;
+                match (l_cmp, r_cmp) {
+                    (Ordering::Greater, Ordering::Greater) => {
+                        Some(Ordering::Greater)
+                    }
+                    (Ordering::Less, Ordering::Less) => {
+                        Some(Ordering::Less)
+                    }
+                    (Ordering::Equal, x) | (x, Ordering::Equal) => {
+                        Some(x)
+                    }
+                    (Ordering::Less, Ordering::Greater) | (Ordering::Greater, Ordering::Less) => {
+                        None
                     }
                 }
             }
-            _ => None,
+            (SubTree(a, l, r), Leaf(b)) => {
+                let l_cmp = l.clone().lift(*a).partial_cmp(&Leaf(*b))?;
+                let r_cmp = r.clone().lift(*a).partial_cmp(&Leaf(*b))?;
+                match (l_cmp, r_cmp) {
+                    (Ordering::Greater, Ordering::Greater) => {
+                        Some(Ordering::Greater)
+                    }
+                    (Ordering::Less, Ordering::Less) => {
+                        Some(Ordering::Less)
+                    }
+                    (Ordering::Equal, x) | (x, Ordering::Equal) => {
+                        Some(x)
+                    }
+                    (Ordering::Less, Ordering::Greater) | (Ordering::Greater, Ordering::Less) => {
+                        None
+                    }
+                }
+            }
+            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => {
+                let l_cmp = l0.clone().lift(*a).partial_cmp(&l1.clone().lift(*b))?;
+                let r_cmp = r0.clone().lift(*a).partial_cmp(&r1.clone().lift(*b))?;
+                match (l_cmp, r_cmp) {
+                    (Ordering::Greater, Ordering::Greater) => {
+                        Some(Ordering::Greater)
+                    }
+                    (Ordering::Less, Ordering::Less) => {
+                        Some(Ordering::Less)
+                    }
+                    (Ordering::Equal, x) | (x, Ordering::Equal) => {
+                        Some(x)
+                    }
+                    (Ordering::Less, Ordering::Greater) | (Ordering::Greater, Ordering::Less) => {
+                        None
+                    }
+                }
+            }
         }
     }
 }
@@ -288,5 +321,36 @@ impl std::fmt::Display for EventTree {
             Leaf(val) => write!(f, "{}", val),
             SubTree(val, l, r) => write!(f, "({}, {}, {})", val, l, r),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ordering_1() {
+        let e0 = EventTree::Leaf(3);
+        let e1 = EventTree::SubTree(2, Box::new(EventTree::Leaf(1)), Box::new(EventTree::Leaf(0)));
+
+        assert!(e0 > e1);
+        assert!(e1 < e0);
+    }
+
+    #[test]
+    fn test_ordering_2() {
+        let e0 = EventTree::SubTree(1, Box::new(EventTree::Leaf(3)), Box::new(EventTree::Leaf(0)));
+        let e1 = EventTree::SubTree(2, Box::new(EventTree::Leaf(1)), Box::new(EventTree::Leaf(4)));
+
+        assert!(e0 != e1);
+
+        assert!(!(e0 > e1));
+        assert!(!(e0 < e1));
+        assert!(!(e0 >= e1));
+        assert!(!(e0 <= e1));
+        assert!(!(e1 > e0));
+        assert!(!(e1 < e0));
+        assert!(!(e1 >= e0));
+        assert!(!(e1 <= e0));
     }
 }
