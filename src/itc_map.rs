@@ -59,10 +59,10 @@ impl<T> ItcMap<T> {
             if let Some(v) = &mut self.data[idx] {
                 v.0 = id.clone();
                 v.1 = value;
+                return vec![];
             } else {
                 panic!("Fundamental logic bug in ItcMap.");
             }
-            idx
         } else {
             self.allocate(id.clone(), value)
         };
