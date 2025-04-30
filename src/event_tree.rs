@@ -246,15 +246,9 @@ impl PartialOrd for EventTree {
                 let l_cmp = Leaf(*a).partial_cmp(&l.clone().lift(*b))?;
                 let r_cmp = Leaf(*a).partial_cmp(&r.clone().lift(*b))?;
                 match (l_cmp, r_cmp) {
-                    (Ordering::Greater, Ordering::Greater) => {
-                        Some(Ordering::Greater)
-                    }
-                    (Ordering::Less, Ordering::Less) => {
-                        Some(Ordering::Less)
-                    }
-                    (Ordering::Equal, x) | (x, Ordering::Equal) => {
-                        Some(x)
-                    }
+                    (Ordering::Greater, Ordering::Greater) => Some(Ordering::Greater),
+                    (Ordering::Less, Ordering::Less) => Some(Ordering::Less),
+                    (Ordering::Equal, x) | (x, Ordering::Equal) => Some(x),
                     (Ordering::Less, Ordering::Greater) | (Ordering::Greater, Ordering::Less) => {
                         None
                     }
@@ -264,15 +258,9 @@ impl PartialOrd for EventTree {
                 let l_cmp = l.clone().lift(*a).partial_cmp(&Leaf(*b))?;
                 let r_cmp = r.clone().lift(*a).partial_cmp(&Leaf(*b))?;
                 match (l_cmp, r_cmp) {
-                    (Ordering::Greater, Ordering::Greater) => {
-                        Some(Ordering::Greater)
-                    }
-                    (Ordering::Less, Ordering::Less) => {
-                        Some(Ordering::Less)
-                    }
-                    (Ordering::Equal, x) | (x, Ordering::Equal) => {
-                        Some(x)
-                    }
+                    (Ordering::Greater, Ordering::Greater) => Some(Ordering::Greater),
+                    (Ordering::Less, Ordering::Less) => Some(Ordering::Less),
+                    (Ordering::Equal, x) | (x, Ordering::Equal) => Some(x),
                     (Ordering::Less, Ordering::Greater) | (Ordering::Greater, Ordering::Less) => {
                         None
                     }
@@ -282,15 +270,9 @@ impl PartialOrd for EventTree {
                 let l_cmp = l0.clone().lift(*a).partial_cmp(&l1.clone().lift(*b))?;
                 let r_cmp = r0.clone().lift(*a).partial_cmp(&r1.clone().lift(*b))?;
                 match (l_cmp, r_cmp) {
-                    (Ordering::Greater, Ordering::Greater) => {
-                        Some(Ordering::Greater)
-                    }
-                    (Ordering::Less, Ordering::Less) => {
-                        Some(Ordering::Less)
-                    }
-                    (Ordering::Equal, x) | (x, Ordering::Equal) => {
-                        Some(x)
-                    }
+                    (Ordering::Greater, Ordering::Greater) => Some(Ordering::Greater),
+                    (Ordering::Less, Ordering::Less) => Some(Ordering::Less),
+                    (Ordering::Equal, x) | (x, Ordering::Equal) => Some(x),
                     (Ordering::Less, Ordering::Greater) | (Ordering::Greater, Ordering::Less) => {
                         None
                     }
@@ -329,9 +311,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_joins_1() {
+        use EventTree::*;
+
+        let e0 = SubTree(3, Box::new(Leaf(3)), Box::new(Leaf(0)));
+        let e1 = SubTree(3, Box::new(Leaf(0)), Box::new(Leaf(4)));
+
+        let e2 = e0.join(e1);
+        assert_eq!(e2, SubTree(6, Box::new(Leaf(0)), Box::new(Leaf(1))));
+    }
+
+    #[test]
+    fn test_joins_2() {
+        use EventTree::*;
+
+        let e0 = SubTree(3, Box::new(Leaf(3)), Box::new(Leaf(0)));
+        let e1 = SubTree(0, Box::new(Leaf(0)), Box::new(Leaf(4)));
+
+        let e2 = e0.join(e1);
+        assert_eq!(e2, SubTree(4, Box::new(Leaf(2)), Box::new(Leaf(0))));
+    }
+
+    #[test]
     fn test_ordering_1() {
         let e0 = EventTree::Leaf(3);
-        let e1 = EventTree::SubTree(2, Box::new(EventTree::Leaf(1)), Box::new(EventTree::Leaf(0)));
+        let e1 = EventTree::SubTree(
+            2,
+            Box::new(EventTree::Leaf(1)),
+            Box::new(EventTree::Leaf(0)),
+        );
 
         assert!(e0 > e1);
         assert!(e1 < e0);
@@ -339,8 +347,16 @@ mod tests {
 
     #[test]
     fn test_ordering_2() {
-        let e0 = EventTree::SubTree(1, Box::new(EventTree::Leaf(3)), Box::new(EventTree::Leaf(0)));
-        let e1 = EventTree::SubTree(2, Box::new(EventTree::Leaf(1)), Box::new(EventTree::Leaf(4)));
+        let e0 = EventTree::SubTree(
+            1,
+            Box::new(EventTree::Leaf(3)),
+            Box::new(EventTree::Leaf(0)),
+        );
+        let e1 = EventTree::SubTree(
+            2,
+            Box::new(EventTree::Leaf(1)),
+            Box::new(EventTree::Leaf(4)),
+        );
 
         assert!(e0 != e1);
 

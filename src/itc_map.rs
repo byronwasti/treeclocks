@@ -85,6 +85,7 @@ impl<T> ItcMap<T> {
 
     pub fn apply(&mut self, mut patch: Patch<T>) -> Vec<(IdTree, T)> {
         let mut removed = vec![];
+        let peer_time = patch.timestamp.clone();
 
         let time_diff = patch.timestamp.diff(&self.timestamp);
         for (id, val) in patch
@@ -97,7 +98,7 @@ impl<T> ItcMap<T> {
         }
 
         let ts = std::mem::take(&mut self.timestamp);
-        self.timestamp = ts.join(time_diff);
+        self.timestamp = ts.join(peer_time);
 
         removed
     }
@@ -420,13 +421,21 @@ mod tests {
         ma.insert(i0.clone(), 1);
         ma.insert(i0.clone(), 2);
 
+        assert_eq!(ma.timestamp().to_string(), "2");
+
         let (i0, i1) = i0.fork();
+        dbg!(&i0, &i1);
+
         ma.insert(i0.clone(), 3);
+        assert_eq!(ma.timestamp().to_string(), "(2, 1, 0)");
+
         let patch = ma.diff(mb.timestamp());
 
         mb.insert(i1.clone(), 99);
+        assert_eq!(mb.timestamp().to_string(), "(0, 0, 1)");
+
         mb.apply(patch);
 
-        assert_eq!(mb.timestamp().to_string(), "(1, 2, 0)");
+        assert_eq!(mb.timestamp().to_string(), "(2, 1, 0)");
     }
 }
