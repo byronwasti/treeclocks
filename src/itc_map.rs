@@ -57,9 +57,11 @@ impl<T> ItcMap<T> {
     pub fn insert_without_event(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
         let idx = if let Some(idx) = self.index.get(&id) {
             if let Some(v) = &mut self.data[idx] {
-                v.0 = id.clone();
-                v.1 = value;
-                return vec![];
+                if v.0 == id {
+                    v.1 = value;
+                    return vec![];
+                }
+                self.allocate(id.clone(), value)
             } else {
                 panic!("Fundamental logic bug in ItcMap.");
             }
@@ -349,7 +351,7 @@ mod tests {
     use crate::IdTree;
 
     #[test]
-    fn test_inserts() {
+    fn test_inserts_1() {
         let mut map: ItcMap<&'static str> = ItcMap::new();
         let i0 = IdTree::new();
         map.insert(i0.clone(), "test");
@@ -363,7 +365,49 @@ mod tests {
     }
 
     #[test]
-    fn test_removals() {
+    fn test_inserts_2() {
+        let mut map: ItcMap<&'static str> = ItcMap::new();
+
+        // Check our basic inserts
+        let i0 = IdTree::SubTree(Box::new(IdTree::One), Box::new(IdTree::Zero));
+        let i1 = IdTree::SubTree(Box::new(IdTree::Zero), Box::new(IdTree::One));
+
+        let rs = map.insert(i0.clone(), "hello");
+        assert!(rs.is_empty());
+        assert_eq!(map.index.to_string(), "[0, ?]".to_string());
+
+        let rs = map.insert(i1.clone(), "world");
+        assert!(rs.is_empty());
+        assert_eq!(map.index.to_string(), "[0, 1]".to_string());
+
+        // Check our basic inserts with removals
+        let i1 = IdTree::SubTree(
+            Box::new(IdTree::Zero),
+            Box::new(IdTree::SubTree(
+                Box::new(IdTree::One),
+                Box::new(IdTree::Zero),
+            )),
+        );
+        let i2 = IdTree::SubTree(
+            Box::new(IdTree::Zero),
+            Box::new(IdTree::SubTree(
+                Box::new(IdTree::Zero),
+                Box::new(IdTree::One),
+            )),
+        );
+
+        let mut rs = map.insert(i1.clone(), "worldl");
+        let rs: Vec<_> = rs.drain(..).map(|(id, x)| format!("{id}: {x}")).collect();
+        assert_eq!(rs, vec!["(0, 1): world".to_string()]);
+        assert_eq!(map.index.to_string(), "[0, [2, ?]]".to_string());
+
+        let mut rs = map.insert(i2.clone(), "worldr");
+        assert!(rs.is_empty());
+        assert_eq!(map.index.to_string(), "[0, [2, 1]]".to_string());
+    }
+
+    #[test]
+    fn test_removals_1() {
         let mut map: ItcMap<&'static str> = ItcMap::new();
         let i0 = IdTree::new();
         map.insert(i0.clone(), "test");
@@ -379,7 +423,7 @@ mod tests {
     }
 
     #[test]
-    fn test_and_patches() {
+    fn test_patches_1() {
         let mut ma: ItcMap<i32> = ItcMap::new();
         let mut mb: ItcMap<i32> = ItcMap::new();
         let mut mc: ItcMap<i32> = ItcMap::new();
@@ -437,5 +481,51 @@ mod tests {
         mb.apply(patch);
 
         assert_eq!(mb.timestamp().to_string(), "(2, 1, 0)");
+    }
+
+    #[test]
+    fn test_patches_3() {
+        // Check our basic patching
+        let mut map0: ItcMap<&'static str> = ItcMap::new();
+        let i0 = IdTree::SubTree(Box::new(IdTree::One), Box::new(IdTree::Zero));
+        let i1 = IdTree::SubTree(Box::new(IdTree::Zero), Box::new(IdTree::One));
+
+        let rs = map0.insert(i0.clone(), "hello");
+        assert!(rs.is_empty());
+        assert_eq!(map0.index.to_string(), "[0, ?]".to_string());
+        assert_eq!(map0.timestamp().to_string(), "(0, 1, 0)".to_string());
+
+        let mut map1 = patch_clone(&map0);
+
+        let rs = map1.insert(i1.clone(), "world");
+        assert!(rs.is_empty());
+        assert_eq!(map1.index.to_string(), "[0, 1]".to_string());
+        assert_eq!(map1.timestamp().to_string(), "1".to_string());
+
+        // Split
+        let (i1, i2) = i1.fork();
+
+        let mut rs = map1.insert(i1.clone(), "worldl");
+        let rs: Vec<_> = rs.drain(..).map(|(id, x)| format!("{id}: {x}")).collect();
+        assert_eq!(rs, vec!["(0, 1): world".to_string()]);
+        assert_eq!(map1.index.to_string(), "[0, [2, ?]]".to_string());
+        assert_eq!(
+            map1.timestamp().to_string(),
+            "(1, 0, (0, 1, 0))".to_string()
+        );
+
+        let mut map2 = patch_clone(&map1);
+        let rs = map2.insert(i2.clone(), "worldr");
+        assert!(rs.is_empty());
+        assert_eq!(map2.timestamp().to_string(), "(1, 0, 1)".to_string());
+    }
+
+    fn patch_clone<T: Clone>(map: &ItcMap<T>) -> ItcMap<T> {
+        let mut new_map = ItcMap::new();
+
+        let patch = map.diff(&EventTree::Leaf(0));
+        new_map.apply(patch);
+
+        new_map
     }
 }
