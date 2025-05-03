@@ -25,8 +25,9 @@ impl EventTree {
             {
                 r.join(l)
             }
-            (Leaf(a), SubTree(b, l, r)) | (SubTree(a, l, r), Leaf(b)) => {
-                SubTree(a, Box::new(l.lift(b - a)), Box::new(r.lift(b - a))).norm()
+            (Leaf(_), r @ SubTree(_, _, _)) => r,
+            (l @ SubTree(_, _, _), Leaf(b)) => {
+                l.join(SubTree(b, Box::new(Leaf(0)), Box::new(Leaf(0))))
             }
             (SubTree(a, l0, r0), SubTree(b, l1, r1)) => SubTree(
                 a,
@@ -330,6 +331,17 @@ mod tests {
 
         let e2 = e0.join(e1);
         assert_eq!(e2, SubTree(4, Box::new(Leaf(2)), Box::new(Leaf(0))));
+    }
+
+    #[test]
+    fn test_larger_leaf() {
+        use EventTree::*;
+
+        let e0 = SubTree(0, Box::new(Leaf(0)), Box::new(Leaf(1)));
+        let e1 = Leaf(1);
+
+        let e2 = e0.join(e1);
+        assert_eq!(e2, Leaf(1));
     }
 
     #[test]
