@@ -54,12 +54,12 @@ impl<T> ItcMap<T> {
         }
     }
 
-    pub fn insert_without_event(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
+    pub fn insert_without_event(&mut self, id: IdTree, mut value: T) -> Vec<(IdTree, T)> {
         let idx = if let Some(idx) = self.index.get(&id) {
             if let Some(v) = &mut self.data[idx] {
                 if v.0 == id {
-                    v.1 = value;
-                    return vec![];
+                    std::mem::swap(&mut v.1, &mut value);
+                    return vec![(id, value)];
                 }
                 self.allocate(id.clone(), value)
             } else {
@@ -85,24 +85,36 @@ impl<T> ItcMap<T> {
         removed
     }
 
-    pub fn apply(&mut self, mut patch: Patch<T>) -> Vec<(IdTree, T)> {
+    /// Returns (&Added, Removed)
+    pub fn apply(&mut self, mut patch: Patch<T>) -> (Vec<(IdTree, &T)>, Vec<(IdTree, T)>) {
         let mut removed = vec![];
-        let peer_time = patch.timestamp.clone();
+        let mut added_ids = vec![];
 
+        let peer_time = patch.timestamp.clone();
         let time_diff = patch.timestamp.diff(&self.timestamp);
+
         for (id, val) in patch
             .inner
             .drain(..)
             .filter(|(id, _)| time_diff.contains(id))
         {
-            let mut rem = self.insert_without_event(id, val);
+            let mut rem = self.insert_without_event(id.clone(), val);
             removed.append(&mut rem);
+            added_ids.push(id);
         }
 
         let ts = std::mem::take(&mut self.timestamp);
         self.timestamp = ts.join(peer_time);
 
-        removed
+        let added = added_ids
+            .drain(..)
+            .filter_map(|id| {
+                let val = self.get(&id)?;
+                Some((id, val))
+            })
+            .collect();
+
+        (added, removed)
     }
 
     fn allocate(&mut self, id: IdTree, value: T) -> usize {
@@ -401,7 +413,7 @@ mod tests {
         assert_eq!(rs, vec!["(0, 1): world".to_string()]);
         assert_eq!(map.index.to_string(), "[0, [2, ?]]".to_string());
 
-        let mut rs = map.insert(i2.clone(), "worldr");
+        let rs = map.insert(i2.clone(), "worldr");
         assert!(rs.is_empty());
         assert_eq!(map.index.to_string(), "[0, [2, 1]]".to_string());
     }
