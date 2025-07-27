@@ -49,7 +49,7 @@ use treeclocks::{IdTree, ItcMap};
 let mut map_a = ItcMap::new();
 let mut map_b = ItcMap::new();
 
-let id_a = IdTree::new();
+let id_a = IdTree::one();
 let (id_a, id_b) = id_a.fork();
 
 map_a.insert(id_a.clone(), 207);

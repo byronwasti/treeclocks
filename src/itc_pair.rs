@@ -105,6 +105,6 @@ mod tests {
         let t = n3.timestamp.clone();
         let diff = t.diff(&n2.timestamp);
 
-        assert_eq!(&diff.to_string(), "(0, (0, 1, 0), (0, 0, 0))");
+        assert_eq!(&diff.to_string(), "(0, (0, 1, 0), 0)");
     }
 }

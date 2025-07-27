@@ -10,8 +10,17 @@ pub enum IdTree {
 
 impl IdTree {
     /// Initial tree is the full interval (1)
-    pub fn new() -> Self {
+    pub fn one() -> Self {
         Self::default()
+    }
+
+    /// Initial tree is the empty interval (0)
+    pub fn zero() -> Self {
+        Self::Zero
+    }
+
+    pub fn subtree(left: IdTree, right: IdTree) -> Self {
+        Self::SubTree(Box::new(left), Box::new(right))
     }
 
     /// Consumes to create id_left and id_right
@@ -99,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_fork_join() {
-        let i0 = IdTree::new();
+        let i0 = IdTree::one();
         let (i0, i1) = i0.fork();
         let (_i1, i2) = i1.fork();
         let i0 = i0.join(i2);

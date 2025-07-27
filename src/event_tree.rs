@@ -14,6 +14,14 @@ impl EventTree {
         Self::default()
     }
 
+    pub fn subtree(val: u64, left: EventTree, right: EventTree) -> Self {
+        Self::SubTree(
+            val,
+            Box::new(left),
+            Box::new(right),
+        )
+    }
+
     pub fn join(self, other: Self) -> Self {
         use EventTree::*;
         match (self, other) {
@@ -50,31 +58,27 @@ impl EventTree {
         }
     }
 
-    /// Saturating subtraction of the other EventTree
+    /// Saturating substraction of the other EventTree
+    ///
+    /// This uses a rather naive algorithm that forces each tree to be identical in structure and
+    /// then does a saturating_sub of the leaves. There is likely a more efficient algorithm.
     pub fn diff(self, other: &Self) -> Self {
         use EventTree::*;
         match (self, other) {
             (Leaf(a), Leaf(b)) => Leaf(a.saturating_sub(*b)),
-            (SubTree(a, l, r), Leaf(b)) if a >= *b => SubTree(a.saturating_sub(*b), l, r),
-            (SubTree(..), Leaf(..)) => Leaf(0),
-            (Leaf(a), SubTree(b, l, r)) if a >= *b => {
-                let diff = a.saturating_sub(*b);
-                SubTree(
-                    0,
-                    Box::new(Leaf(diff).diff(l)),
-                    Box::new(Leaf(diff).diff(r)),
-                )
+            (a@SubTree(..), Leaf(b)) => {
+                a.diff(&Self::subtree(0, Leaf(*b), Leaf(*b))).norm()
             }
-            (Leaf(..), SubTree(..)) => Leaf(0),
-            (SubTree(a, l0, r0), SubTree(b, l1, r1)) if a >= *b => {
-                let diff = a.saturating_sub(*b);
-                SubTree(
-                    0,
-                    Box::new(l0.lift(diff).diff(l1)),
-                    Box::new(r0.lift(diff).diff(r1)),
-                )
+            (Leaf(a), b@SubTree(..)) => {
+                Self::subtree(0, Leaf(a), Leaf(a)).diff(b).norm()
             }
-            (SubTree(..), SubTree(..)) => Leaf(0),
+            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => {
+                Self::subtree(
+                    0,
+                    l0.lift(a).diff(&l1.clone().lift(*b)),
+                    r0.lift(a).diff(&r1.clone().lift(*b)),
+                ).norm()
+            }
         }
     }
 
@@ -380,5 +384,30 @@ mod tests {
         assert!(!(e1 < e0));
         assert!(!(e1 >= e0));
         assert!(!(e1 <= e0));
+    }
+
+    #[test]
+    fn test_diff_1() {
+        let e0 = EventTree::Leaf(5);
+        let e1 = EventTree::subtree(4, EventTree::Leaf(2), EventTree::Leaf(0));
+
+        let diff = e0.diff(&e1);
+        assert_eq!(diff.to_string(), "(0, 0, 1)".to_string());
+    }
+
+    #[test]
+    fn test_diff_2() {
+        let e0 = EventTree::Leaf(5);
+        let e1 = EventTree::subtree(4, EventTree::Leaf(2), EventTree::Leaf(0));
+
+        let diff = e1.diff(&e0);
+        assert_eq!(diff.to_string(), "(0, 1, 0)".to_string());
+    }
+
+    #[test]
+    fn test_norm() {
+        let e = EventTree::subtree(0, EventTree::Leaf(0), EventTree::Leaf(0));
+        let e = e.norm();
+        assert_eq!(e.to_string(), "0".to_string());
     }
 }
