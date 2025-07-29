@@ -15,11 +15,7 @@ impl EventTree {
     }
 
     pub fn subtree(val: u64, left: EventTree, right: EventTree) -> Self {
-        Self::SubTree(
-            val,
-            Box::new(left),
-            Box::new(right),
-        )
+        Self::SubTree(val, Box::new(left), Box::new(right))
     }
 
     pub fn join(self, other: Self) -> Self {
@@ -66,19 +62,14 @@ impl EventTree {
         use EventTree::*;
         match (self, other) {
             (Leaf(a), Leaf(b)) => Leaf(a.saturating_sub(*b)),
-            (a@SubTree(..), Leaf(b)) => {
-                a.diff(&Self::subtree(0, Leaf(*b), Leaf(*b))).norm()
-            }
-            (Leaf(a), b@SubTree(..)) => {
-                Self::subtree(0, Leaf(a), Leaf(a)).diff(b).norm()
-            }
-            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => {
-                Self::subtree(
-                    0,
-                    l0.lift(a).diff(&l1.clone().lift(*b)),
-                    r0.lift(a).diff(&r1.clone().lift(*b)),
-                ).norm()
-            }
+            (a @ SubTree(..), Leaf(b)) => a.diff(&Self::subtree(0, Leaf(*b), Leaf(*b))).norm(),
+            (Leaf(a), b @ SubTree(..)) => Self::subtree(0, Leaf(a), Leaf(a)).diff(b).norm(),
+            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => Self::subtree(
+                0,
+                l0.lift(a).diff(&l1.clone().lift(*b)),
+                r0.lift(a).diff(&r1.clone().lift(*b)),
+            )
+            .norm(),
         }
     }
 
@@ -402,6 +393,13 @@ mod tests {
 
         let diff = e1.diff(&e0);
         assert_eq!(diff.to_string(), "(0, 1, 0)".to_string());
+    }
+
+    #[test]
+    fn test_diff_3() {
+        //let e0 = (2, (2, 2, 0), 0)
+        // (4, (0, 0, 3), 1)
+        //let e1
     }
 
     #[test]

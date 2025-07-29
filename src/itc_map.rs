@@ -191,7 +191,11 @@ impl<T: fmt::Display> fmt::Display for ItcMap<T> {
             .map(|(id, d)| format!("{id}: {d}"))
             .collect::<Vec<_>>()
             .join(", ");
-        write!(f, "TS:{} INDEX:{} DATA:{{ {} }}", self.timestamp, self.index, data)
+        write!(
+            f,
+            "TS:{} INDEX:{} DATA:{{ {} }}",
+            self.timestamp, self.index, data
+        )
     }
 }
 
@@ -208,10 +212,7 @@ enum ItcIndex {
 
 impl ItcIndex {
     fn subtree(left: ItcIndex, right: ItcIndex) -> Self {
-        Self::SubTree(
-            Box::new(left),
-            Box::new(right),
-        )
+        Self::SubTree(Box::new(left), Box::new(right))
     }
 
     fn get(&self, id: &IdTree) -> Option<usize> {
@@ -366,7 +367,9 @@ pub struct Patch<T> {
 
 impl<T: fmt::Display> fmt::Display for Patch<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        let inner = self.inner.iter()
+        let inner = self
+            .inner
+            .iter()
             .map(|(id, d)| format!("{id}: {d}"))
             .collect::<Vec<_>>()
             .join(", ");
@@ -555,37 +558,34 @@ mod tests {
             timestamp: EventTree::Leaf(5),
             index: ItcIndex::subtree(ItcIndex::Leaf(0), ItcIndex::Leaf(1)),
             data: vec![
-                Some((
-                        IdTree::subtree(IdTree::One, IdTree::Zero),
-                        "foo",
-                )),
-                Some((
-                        IdTree::subtree(IdTree::Zero, IdTree::One),
-                        "bar",
-                )),
+                Some((IdTree::subtree(IdTree::One, IdTree::Zero), "foo")),
+                Some((IdTree::subtree(IdTree::Zero, IdTree::One), "bar")),
             ],
         };
 
         let map1 = ItcMap {
             timestamp: EventTree::subtree(4, EventTree::Leaf(2), EventTree::Leaf(0)),
-            index: ItcIndex::subtree(ItcIndex::subtree(ItcIndex::Leaf(0), ItcIndex::Leaf(2)), ItcIndex::Leaf(1)),
+            index: ItcIndex::subtree(
+                ItcIndex::subtree(ItcIndex::Leaf(0), ItcIndex::Leaf(2)),
+                ItcIndex::Leaf(1),
+            ),
             data: vec![
                 Some((
-                        IdTree::subtree(IdTree::subtree(IdTree::One, IdTree::Zero), IdTree::Zero),
-                        "foo",
+                    IdTree::subtree(IdTree::subtree(IdTree::One, IdTree::Zero), IdTree::Zero),
+                    "foo",
                 )),
+                Some((IdTree::subtree(IdTree::Zero, IdTree::One), "bar")),
                 Some((
-                        IdTree::subtree(IdTree::Zero, IdTree::One),
-                        "bar",
-                )),
-                Some((
-                        IdTree::subtree(IdTree::subtree(IdTree::Zero, IdTree::One), IdTree::Zero),
-                        "baz",
+                    IdTree::subtree(IdTree::subtree(IdTree::Zero, IdTree::One), IdTree::Zero),
+                    "baz",
                 )),
             ],
         };
 
-        assert_eq!(map0.to_string(), "TS:5 INDEX:[0, 1] DATA:{ (1, 0): foo, (0, 1): bar }".to_string());
+        assert_eq!(
+            map0.to_string(),
+            "TS:5 INDEX:[0, 1] DATA:{ (1, 0): foo, (0, 1): bar }".to_string()
+        );
         assert_eq!(map1.to_string(), "TS:(4, 2, 0) INDEX:[[0, 2], 1] DATA:{ ((1, 0), 0): foo, (0, 1): bar, ((0, 1), 0): baz }".to_string());
 
         let patch = map1.diff(map0.timestamp());

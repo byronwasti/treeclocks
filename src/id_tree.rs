@@ -1,4 +1,6 @@
-/// A near one-to-one replication of the original paper.
+#[cfg(feature = "parse")]
+mod parser;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IdTree {
