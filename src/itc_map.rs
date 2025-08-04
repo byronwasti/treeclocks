@@ -86,7 +86,7 @@ impl<T> ItcMap<T> {
     }
 
     /// Returns (&Added, Removed)
-    pub fn apply(&mut self, mut patch: Patch<T>) -> (Vec<(IdTree, &T)>, Vec<(IdTree, T)>) {
+    pub fn apply(&mut self, mut patch: Patch<T>) -> (IdAdditions<T>, IdRemovals<T>) {
         let mut removed = vec![];
         let mut added_ids = vec![];
 
@@ -133,6 +133,9 @@ impl<T> ItcMap<T> {
         self.timestamp = ts;
     }
 }
+
+type IdAdditions<'a, T> = Vec<(IdTree, &'a T)>;
+type IdRemovals<T> = Vec<(IdTree, T)>;
 
 impl<T: Clone> ItcMap<T> {
     pub fn diff(&self, timestamp: &EventTree) -> Patch<T> {
@@ -211,6 +214,7 @@ enum ItcIndex {
 }
 
 impl ItcIndex {
+    #[allow(unused)]
     fn subtree(left: ItcIndex, right: ItcIndex) -> Self {
         Self::SubTree(Box::new(left), Box::new(right))
     }

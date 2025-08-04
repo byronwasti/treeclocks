@@ -27,34 +27,32 @@ impl std::str::FromStr for IdTree {
         } else if s.starts_with('(') && s.ends_with(')') {
             let s = &s[1..s.len() - 1];
 
-            if s.starts_with('(') {
+            let (left, right) = if s.starts_with('(') {
                 let mut acc = 0;
                 let (idx, _) = s
                     .char_indices()
-                    .take_while(|(idx, c)| {
+                    .take_while(|(_idx, c)| {
                         match c {
                             '(' => acc += 1,
                             ')' => acc -= 1,
                             _ => {}
                         }
 
-                        println!("{c} => {acc}");
-
-                        if acc == 0 { false } else { true }
+                        acc != 0
                     })
                     .last()
                     .ok_or(IdTreeParseError::NoSplit)?;
 
-                let (left, right) = s.split_at(idx + 1);
-                let left = left.parse::<Self>()?;
-                let right = right.parse::<Self>()?;
-                Ok(IdTree::subtree(left, right))
+                let (left, right) = s.split_at(idx + 2);
+                let right = &right[1..];
+                (left, right)
             } else {
-                let (left, right) = s.split_once(',').ok_or(IdTreeParseError::NoSplit)?;
-                let left = left.parse::<Self>()?;
-                let right = right.parse::<Self>()?;
-                Ok(IdTree::subtree(left, right))
-            }
+                s.split_once(',').ok_or(IdTreeParseError::NoSplit)?
+            };
+
+            let left = left.parse::<Self>()?;
+            let right = right.parse::<Self>()?;
+            Ok(IdTree::subtree(left, right))
         } else {
             Err(IdTreeParseError::Unknown)
         }
@@ -67,10 +65,15 @@ mod tests {
 
     #[test]
     fn test_parse() {
-        //let s = "((0, 1), (((1, 0), (0, 1)), (1, 0)))";
-        let s = "(0, 1)";
-        let id: IdTree = s.parse().unwrap();
+        let strs = [
+            "(0, 1)",
+            "((1, 0), 1)",
+            "(((1, 0), (0, (1, 0))), (((1, 0), (0, 1)), (1, 0)))",
+        ];
 
-        assert_eq!(format!("{id}"), s);
+        for s in strs {
+            let id: IdTree = s.parse().expect(&format!("Unable to parse {s}"));
+            assert_eq!(format!("{id}"), s);
+        }
     }
 }
