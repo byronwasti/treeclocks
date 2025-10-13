@@ -86,7 +86,7 @@ impl<T> ItcMap<T> {
     }
 
     /// Returns (&Added, Removed)
-    pub fn apply(&mut self, mut patch: Patch<T>) -> (IdAdditions<T>, IdRemovals<T>) {
+    pub fn apply<'a>(&'a mut self, mut patch: Patch<T>) -> (IdAdditions<'a, T>, IdRemovals<T>) {
         let mut removed = vec![];
         let mut added_ids = vec![];
 
