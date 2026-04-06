@@ -133,11 +133,12 @@ impl<T> ItcMap<T> {
         self.timestamp = ts;
     }
 
-    pub fn map_recursive<U: Default>(
-        &self,
-        leaf_fn: &dyn Fn(&T) -> U,
-        combine_fn: &dyn Fn(U, U) -> U,
-    ) -> U {
+    pub fn map_recursive<U, L, C>(&self, leaf_fn: &L, combine_fn: &C) -> U
+    where
+        U: Default,
+        L: Fn(&T) -> U,
+        C: Fn(U, U) -> U,
+    {
         self.index.map_recursive(
             &|idx: usize| {
                 let value = self.data[idx].as_ref().map(|(_, v)| v);
@@ -368,11 +369,12 @@ impl ItcIndex {
         idxs
     }
 
-    fn map_recursive<U: Default>(
-        &self,
-        leaf_fn: &dyn Fn(usize) -> U,
-        combine_fn: &dyn Fn(U, U) -> U,
-    ) -> U {
+    fn map_recursive<U, L, C>(&self, leaf_fn: &L, combine_fn: &C) -> U
+    where
+        U: Default,
+        L: Fn(usize) -> U,
+        C: Fn(U, U) -> U,
+    {
         match &self {
             ItcIndex::Unknown => U::default(),
             ItcIndex::Leaf(idx) => leaf_fn(*idx),
