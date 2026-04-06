@@ -132,6 +132,24 @@ impl<T> ItcMap<T> {
         let ts = ts.event(id);
         self.timestamp = ts;
     }
+
+    pub fn map_recursive<U: Default>(
+        &self,
+        leaf_fn: &dyn Fn(&T) -> U,
+        combine_fn: &dyn Fn(U, U) -> U,
+    ) -> U {
+        self.index.map_recursive(
+            &|idx: usize| {
+                let value = self.data[idx].as_ref().map(|(_, v)| v);
+                if let Some(value) = value {
+                    leaf_fn(value)
+                } else {
+                    U::default()
+                }
+            },
+            combine_fn,
+        )
+    }
 }
 
 type IdAdditions<'a, T> = Vec<(IdTree, &'a T)>;
@@ -232,7 +250,7 @@ impl ItcIndex {
                 }
             }
             // TODO: Should we handle partial-match cases? Are there any situations where our
-            // IdTree we're looking up is _almsot_ valid?
+            // IdTree we're looking up is _almost_ valid?
             _ => None,
         }
     }
@@ -348,6 +366,21 @@ impl ItcIndex {
         }
 
         idxs
+    }
+
+    fn map_recursive<U: Default>(
+        &self,
+        leaf_fn: &dyn Fn(usize) -> U,
+        combine_fn: &dyn Fn(U, U) -> U,
+    ) -> U {
+        match &self {
+            ItcIndex::Unknown => U::default(),
+            ItcIndex::Leaf(idx) => leaf_fn(*idx),
+            ItcIndex::SubTree(l, r) => combine_fn(
+                l.map_recursive(leaf_fn, combine_fn),
+                r.map_recursive(leaf_fn, combine_fn),
+            ),
+        }
     }
 }
 
@@ -605,5 +638,27 @@ mod tests {
         new_map.apply(patch);
 
         new_map
+    }
+
+    #[test]
+    fn test_map_recursive() {
+        let mut map0: ItcMap<i32> = ItcMap::new();
+        let mut map1: ItcMap<i32> = ItcMap::new();
+        let i = IdTree::one();
+        let (i, i2) = i.fork();
+        let (i0, i1) = i.fork();
+        map0.insert(i0.clone(), 5);
+        map0.insert(i1.clone(), 12);
+        map0.insert(i2.clone(), 24);
+
+        // Different order; different result
+        map1.insert(i0.clone(), 24);
+        map1.insert(i1.clone(), 12);
+        map1.insert(i2.clone(), 5);
+
+        let res0 = map0.map_recursive(&|x| *x, &|x, y| x - y);
+        let res1 = map1.map_recursive(&|x| *x, &|x, y| x - y);
+        assert_eq!(res0, -31);
+        assert_eq!(res1, 7);
     }
 }
