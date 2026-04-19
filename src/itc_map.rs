@@ -14,6 +14,12 @@ impl<T> ItcMap<T> {
         Self::default()
     }
 
+    pub fn from_patch(patch: Patch<T>) -> Self {
+        let mut new = Self::new();
+        new.apply(patch);
+        new
+    }
+
     pub fn timestamp(&self) -> &EventTree {
         &self.timestamp
     }
