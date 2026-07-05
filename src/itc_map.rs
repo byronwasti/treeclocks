@@ -163,18 +163,22 @@ type IdAdditions<'a, T> = Vec<(IdTree, &'a T)>;
 type IdRemovals<T> = Vec<(IdTree, T)>;
 
 impl<T: Clone> ItcMap<T> {
-    pub fn diff(&self, timestamp: &EventTree) -> Patch<T> {
+    pub fn diff(&self, timestamp: &EventTree) -> Option<Patch<T>> {
         let time_diff = self.timestamp.clone().diff(timestamp);
+        if time_diff == EventTree::Leaf(0) {
+            return None;
+        }
+
         let idxs = self.index.query(&time_diff);
 
         let inner = idxs
             .filter_map(|idx| self.data[idx].as_ref())
             .map(|(id, d)| (id.clone(), d.clone()))
             .collect();
-        Patch {
+        Some(Patch {
             timestamp: self.timestamp.clone(),
             inner,
-        }
+        })
     }
 }
 
@@ -514,7 +518,7 @@ mod tests {
 
         mc.insert(irl.clone(), 1);
 
-        let patch = ma.diff(mc.timestamp());
+        let patch = ma.diff(mc.timestamp()).expect("Some patch");
         mc.apply(patch);
         assert_eq!(&format!("{}", ma.timestamp()), "(0, (0, 1, 0), 0)");
         assert_eq!(&format!("{}", mc.timestamp()), "(0, (0, 1, 0), (0, 1, 0))");
@@ -524,7 +528,7 @@ mod tests {
         mb.insert(irr.clone(), 4);
         mb.insert(irr.clone(), 5);
 
-        let patch = mc.diff(mb.timestamp());
+        let patch = mc.diff(mb.timestamp()).expect("Some patch");
         mb.apply(patch);
 
         assert_eq!(&format!("{}", mb.timestamp()), "(0, (0, 1, 0), (1, 0, 2))");
@@ -550,7 +554,7 @@ mod tests {
         ma.insert(i0.clone(), 3);
         assert_eq!(ma.timestamp().to_string(), "(2, 1, 0)");
 
-        let patch = ma.diff(mb.timestamp());
+        let patch = ma.diff(mb.timestamp()).expect("Some patch");
 
         mb.insert(i1.clone(), 99);
         assert_eq!(mb.timestamp().to_string(), "(0, 0, 1)");
@@ -598,6 +602,18 @@ mod tests {
     }
 
     #[test]
+    fn test_patches_none() {
+        let mut m: ItcMap<i32> = ItcMap::new();
+
+        let i0 = IdTree::one();
+        let (il, _) = i0.fork();
+
+        m.insert(il.clone(), 2);
+
+        assert!(matches!(m.diff(m.timestamp()), None));
+    }
+
+    #[test]
     fn test_patches_skew() {
         let mut map0 = ItcMap {
             timestamp: EventTree::Leaf(5),
@@ -633,7 +649,7 @@ mod tests {
         );
         assert_eq!(map1.to_string(), "TS:(4, 2, 0) INDEX:[[0, 2], 1] DATA:{ ((1, 0), 0): foo, (0, 1): bar, ((0, 1), 0): baz }".to_string());
 
-        let patch = map1.diff(map0.timestamp());
+        let patch = map1.diff(map0.timestamp()).expect("Some patch");
         map0.apply(patch);
 
         assert_eq!(map0.timestamp().to_string(), "(5, 1, 0)");
@@ -642,7 +658,7 @@ mod tests {
     fn patch_clone<T: Clone>(map: &ItcMap<T>) -> ItcMap<T> {
         let mut new_map = ItcMap::new();
 
-        let patch = map.diff(&EventTree::Leaf(0));
+        let patch = map.diff(&EventTree::Leaf(0)).expect("Some patch");
         new_map.apply(patch);
 
         new_map

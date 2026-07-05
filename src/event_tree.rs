@@ -396,10 +396,12 @@ mod tests {
     }
 
     #[test]
-    fn test_diff_3() {
-        //let e0 = (2, (2, 2, 0), 0)
-        // (4, (0, 0, 3), 1)
-        //let e1
+    fn test_diff_none() {
+        let e0 = EventTree::Leaf(5);
+        let e1 = EventTree::subtree(4, EventTree::Leaf(1), EventTree::Leaf(1));
+
+        let diff = e0.diff(&e1);
+        assert_eq!(diff.to_string(), "0".to_string());
     }
 
     #[test]

@@ -55,8 +55,8 @@ let (id_a, id_b) = id_a.fork();
 map_a.insert(id_a.clone(), 207);
 map_b.insert(id_b.clone(), 324);
 
-let patch_for_b = map_a.diff(map_b.timestamp());
-let patch_for_a = map_b.diff(map_a.timestamp());
+let patch_for_b = map_a.diff(map_b.timestamp()).expect("Some patch");
+let patch_for_a = map_b.diff(map_a.timestamp()).expect("Some patch");
 
 map_a.apply(patch_for_a);
 map_b.apply(patch_for_b);
