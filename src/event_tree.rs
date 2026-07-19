@@ -82,6 +82,24 @@ impl EventTree {
         }
     }
 
+    /// Returns an EventTree with values only where `other` is non-zero.
+    pub fn mask(&self, other: &Self) -> Self {
+        use EventTree::*;
+        match (self, other) {
+            (_, Leaf(0)) => Leaf(0),
+            (Leaf(a), Leaf(_)) => Leaf(*a),
+            (a @ SubTree(..), Leaf(_)) => a.clone(),
+            (Leaf(a), b @ SubTree(..)) => Self::subtree(0, Leaf(*a), Leaf(*a)).mask(b).norm(),
+            (SubTree(a, l0, r0), SubTree(0, l1, r1)) => Self::subtree(
+                0,
+                l0.clone().lift(*a).mask(l1),
+                r0.clone().lift(*a).mask(r1),
+            )
+            .norm(),
+            (a @ SubTree(..), SubTree(..)) => a.clone(),
+        }
+    }
+
     fn norm(&self) -> Self {
         use EventTree::*;
         match self {
@@ -409,5 +427,47 @@ mod tests {
         let e = EventTree::subtree(0, EventTree::Leaf(0), EventTree::Leaf(0));
         let e = e.norm();
         assert_eq!(e.to_string(), "0".to_string());
+    }
+
+    #[test]
+    fn test_mask_0() {
+        use EventTree::*;
+
+        let e0 = EventTree::subtree(5, Leaf(1), Leaf(0));
+        let e1 = EventTree::subtree(0, Leaf(0), Leaf(2));
+
+        let e = e0.mask(&e1);
+        assert_eq!(e.to_string(), "(0, 0, 5)");
+
+        let e = e1.mask(&e0);
+        assert_eq!(e.to_string(), "(0, 0, 2)");
+    }
+
+    #[test]
+    fn test_mask_1() {
+        use EventTree::*;
+
+        let e0 = EventTree::subtree(0, Leaf(1), Leaf(0));
+        let e1 = EventTree::subtree(0, Leaf(0), Leaf(2));
+
+        let e = e0.mask(&e1);
+        assert_eq!(e.to_string(), "0");
+
+        let e = e1.mask(&e0);
+        assert_eq!(e.to_string(), "0");
+    }
+
+    #[test]
+    fn test_mask_2() {
+        use EventTree::*;
+
+        let e0 = EventTree::subtree(2, Leaf(1), Leaf(0));
+        let e1 = EventTree::subtree(1, Leaf(0), Leaf(2));
+
+        let e = e0.mask(&e1);
+        assert_eq!(e.to_string(), "(2, 1, 0)");
+
+        let e = e1.mask(&e0);
+        assert_eq!(e.to_string(), "(1, 0, 2)");
     }
 }

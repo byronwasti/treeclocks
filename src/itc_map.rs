@@ -28,7 +28,14 @@ impl<T> ItcMap<T> {
         self.index
             .get(id)
             .and_then(|idx| self.data[idx].as_ref())
-            .and_then(|(sid, d)| if id == sid { Some(d) } else { None })
+            .map(|(sid, d)| {
+                if id == sid {
+                    d
+                } else {
+                    // TODO: Are there cases where this isn't a panic?
+                    panic!("ItcIndex out of sync with ItcMap")
+                }
+            })
     }
 
     pub fn len(&self) -> usize {
@@ -175,8 +182,10 @@ impl<T: Clone> ItcMap<T> {
             .filter_map(|idx| self.data[idx].as_ref())
             .map(|(id, d)| (id.clone(), d.clone()))
             .collect();
+        let mask = self.timestamp.mask(&time_diff);
+        assert_ne!(mask, EventTree::Leaf(0));
         Some(Patch {
-            timestamp: self.timestamp.clone(),
+            timestamp: mask,
             inner,
         })
     }
