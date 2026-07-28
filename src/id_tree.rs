@@ -34,23 +34,21 @@ impl IdTree {
                 SubTree(Box::new(One), Box::new(Zero)),
                 SubTree(Box::new(Zero), Box::new(One)),
             ),
-            SubTree(a, b) => {
-                if a.is_zero() {
-                    let (a, b) = b.fork();
-                    (
-                        SubTree(Box::new(Zero), Box::new(a)),
-                        SubTree(Box::new(Zero), Box::new(b)),
-                    )
-                } else if b.is_zero() {
-                    let (a, b) = a.fork();
-                    (
-                        SubTree(Box::new(a), Box::new(Zero)),
-                        SubTree(Box::new(b), Box::new(Zero)),
-                    )
-                } else {
-                    (SubTree(a, Box::new(Zero)), SubTree(Box::new(Zero), b))
-                }
+            SubTree(a, b) if a.is_zero() => {
+                let (a, b) = b.fork();
+                (
+                    SubTree(Box::new(Zero), Box::new(a)),
+                    SubTree(Box::new(Zero), Box::new(b)),
+                )
             }
+            SubTree(a, b) if b.is_zero() => {
+                let (a, b) = a.fork();
+                (
+                    SubTree(Box::new(a), Box::new(Zero)),
+                    SubTree(Box::new(b), Box::new(Zero)),
+                )
+            }
+            SubTree(a, b) => (SubTree(a, Box::new(Zero)), SubTree(Box::new(Zero), b)),
         }
     }
 
@@ -107,6 +105,32 @@ impl std::fmt::Display for IdTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_fork_1() {
+        let i = IdTree::one();
+        let (il, ir) = i.fork();
+        let (irl, irr) = ir.fork();
+        let (ill, ilr) = il.fork();
+
+        assert_eq!(&irl.to_string(), "(0, (1, 0))");
+        assert_eq!(&irr.to_string(), "(0, (0, 1))");
+        assert_eq!(&ill.to_string(), "((1, 0), 0)");
+        assert_eq!(&ilr.to_string(), "((0, 1), 0)");
+    }
+
+    #[test]
+    fn test_fork_2() {
+        let i = IdTree::subtree(
+            IdTree::subtree(IdTree::one(), IdTree::zero()),
+            IdTree::subtree(IdTree::zero(), IdTree::one()),
+        );
+
+        let (il, ir) = i.fork();
+
+        assert_eq!(&il.to_string(), "((1, 0), 0)");
+        assert_eq!(&ir.to_string(), "(0, (0, 1))");
+    }
 
     #[test]
     fn test_fork_join() {
