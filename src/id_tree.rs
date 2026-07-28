@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 #[cfg(feature = "parse")]
 mod parser;
 
@@ -50,6 +52,31 @@ impl IdTree {
             }
             SubTree(a, b) => (SubTree(a, Box::new(Zero)), SubTree(Box::new(Zero), b)),
         }
+    }
+
+    /// Consumes to create many Ids
+    pub fn fork_many(self, count: usize) -> Vec<Self> {
+        if count == 1 {
+            return vec![self];
+        }
+
+        // TODO: There is certainly a more efficient method than this, but this definitely works and
+        // keeps it somewhat balanced.
+        let mut ids = VecDeque::new();
+        let (l, r) = self.fork();
+        ids.push_back(l);
+        ids.push_back(r);
+
+        while ids.len() < count {
+            let f = ids
+                .pop_front()
+                .expect("Bug in this algorithm; VecDeque should never be empty");
+            let (l, r) = f.fork();
+            ids.push_back(l);
+            ids.push_back(r);
+        }
+
+        ids.into()
     }
 
     /// Consumes to merge two ids
@@ -140,5 +167,30 @@ mod tests {
         let i0 = i0.join(i2);
 
         assert_eq!(&i0.to_string(), "(1, (0, 1))");
+    }
+
+    #[test]
+    fn test_fork_multi_1() {
+        let i = IdTree::one();
+
+        let ids = i.fork_many(5);
+
+        assert_eq!(&ids[0].to_string(), "((0, 1), 0)");
+        assert_eq!(&ids[1].to_string(), "(0, (1, 0))");
+        assert_eq!(&ids[2].to_string(), "(0, (0, 1))");
+        assert_eq!(&ids[3].to_string(), "(((1, 0), 0), 0)");
+        assert_eq!(&ids[4].to_string(), "(((0, 1), 0), 0)");
+    }
+
+    #[test]
+    fn test_fork_multi_2() {
+        let i = IdTree::one();
+
+        let ids = i.clone().fork_many(1);
+        assert_eq!(&ids[0].to_string(), "1");
+
+        let ids = i.fork_many(2);
+        assert_eq!(&ids[0].to_string(), "(1, 0)");
+        assert_eq!(&ids[1].to_string(), "(0, 1)");
     }
 }
