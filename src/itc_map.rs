@@ -352,7 +352,11 @@ impl ItcIndex {
     }
 
     pub fn query(&self, timestamp: &EventTree) -> impl Iterator<Item = usize> {
-        self.query_recurse(timestamp).into_iter()
+        // Enforce deterministic sorting order for simulator purposes.
+        // TODO: This is performance overhead for non-simulation; maybe put behind a flag?
+        let mut entries = self.query_recurse(timestamp).drain().collect::<Vec<_>>();
+        entries.sort();
+        entries.into_iter()
     }
 
     fn query_recurse(&self, timestamp: &EventTree) -> HashSet<usize> {
