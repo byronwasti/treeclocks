@@ -1,5 +1,7 @@
 use crate::IdTree;
 use std::cmp::Ordering;
+use std::iter::Peekable;
+use std::str::{Chars, FromStr};
 
 /// A near one-to-one replication of the original paper.
 #[derive(Clone, Debug, Hash)]
@@ -320,6 +322,79 @@ impl std::fmt::Display for EventTree {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParseEventTreeError;
+
+impl std::fmt::Display for ParseEventTreeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "failed to parse EventTree")
+    }
+}
+
+impl std::error::Error for ParseEventTreeError {}
+
+fn skip_whitespace(chars: &mut Peekable<Chars>) {
+    while matches!(chars.peek(), Some(c) if c.is_whitespace()) {
+        chars.next();
+    }
+}
+
+fn expect(chars: &mut Peekable<Chars>, expected: char) -> Result<(), ParseEventTreeError> {
+    if chars.next() == Some(expected) {
+        Ok(())
+    } else {
+        Err(ParseEventTreeError)
+    }
+}
+
+fn parse_u64(chars: &mut Peekable<Chars>) -> Result<u64, ParseEventTreeError> {
+    let mut digits = String::new();
+    while matches!(chars.peek(), Some(c) if c.is_ascii_digit()) {
+        digits.push(chars.next().unwrap());
+    }
+    digits.parse().map_err(|_| ParseEventTreeError)
+}
+
+fn parse_event_tree(chars: &mut Peekable<Chars>) -> Result<EventTree, ParseEventTreeError> {
+    skip_whitespace(chars);
+    if chars.peek() == Some(&'(') {
+        chars.next();
+
+        skip_whitespace(chars);
+        let val = parse_u64(chars)?;
+
+        skip_whitespace(chars);
+        expect(chars, ',')?;
+        let left = parse_event_tree(chars)?;
+
+        skip_whitespace(chars);
+        expect(chars, ',')?;
+        let right = parse_event_tree(chars)?;
+
+        skip_whitespace(chars);
+        expect(chars, ')')?;
+
+        Ok(EventTree::subtree(val, left, right))
+    } else {
+        let val = parse_u64(chars)?;
+        Ok(EventTree::Leaf(val))
+    }
+}
+
+impl FromStr for EventTree {
+    type Err = ParseEventTreeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars().peekable();
+        let tree = parse_event_tree(&mut chars)?;
+        skip_whitespace(&mut chars);
+        if chars.next().is_some() {
+            return Err(ParseEventTreeError);
+        }
+        Ok(tree)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,6 +530,44 @@ mod tests {
 
         let e = e1.mask(&e0);
         assert_eq!(e.to_string(), "0");
+    }
+
+    #[test]
+    fn test_from_str_leaf() {
+        let e: EventTree = "3".parse().unwrap();
+        assert_eq!(e, EventTree::Leaf(3));
+    }
+
+    #[test]
+    fn test_from_str_subtree() {
+        let e: EventTree = "(1, 2, (3, 4, 5))".parse().unwrap();
+        assert_eq!(
+            e,
+            EventTree::subtree(
+                1,
+                EventTree::Leaf(2),
+                EventTree::subtree(3, EventTree::Leaf(4), EventTree::Leaf(5)),
+            )
+        );
+    }
+
+    #[test]
+    fn test_from_str_invalid() {
+        assert!("(1, 2, 3".parse::<EventTree>().is_err());
+        assert!("".parse::<EventTree>().is_err());
+        assert!("1, 2".parse::<EventTree>().is_err());
+    }
+
+    #[test]
+    fn test_from_str_roundtrip() {
+        let e = EventTree::subtree(
+            6,
+            EventTree::Leaf(0),
+            EventTree::subtree(0, EventTree::Leaf(2), EventTree::Leaf(1)),
+        );
+        let s = e.to_string();
+        let parsed: EventTree = s.parse().unwrap();
+        assert_eq!(e, parsed);
     }
 
     #[test]
