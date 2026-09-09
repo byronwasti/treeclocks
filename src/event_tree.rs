@@ -471,6 +471,97 @@ mod tests {
     }
 
     #[test]
+    fn test_ordering_equal_leaves() {
+        let e0 = EventTree::Leaf(5);
+        let e1 = EventTree::Leaf(5);
+
+        assert_eq!(e0.partial_cmp(&e1), Some(Ordering::Equal));
+        assert!(e0 == e1);
+        assert!(e0 <= e1);
+        assert!(e0 >= e1);
+        assert!(!(e0 < e1));
+        assert!(!(e0 > e1));
+    }
+
+    #[test]
+    fn test_ordering_equal_subtrees() {
+        let e0: EventTree = "(1, 2, 3)".parse().unwrap();
+        let e1: EventTree = "(1, 2, 3)".parse().unwrap();
+
+        assert_eq!(e0.partial_cmp(&e1), Some(Ordering::Equal));
+        assert!(e0 == e1);
+        assert!(e0 <= e1);
+        assert!(e0 >= e1);
+        assert!(!(e0 < e1));
+        assert!(!(e0 > e1));
+    }
+
+    #[test]
+    fn test_ordering_reflexive() {
+        let e: EventTree = "(2, (0, 1, 0), 3)".parse().unwrap();
+
+        assert_eq!(e.partial_cmp(&e), Some(Ordering::Equal));
+        assert!(e <= e);
+        assert!(e >= e);
+    }
+
+    #[test]
+    fn test_ordering_leaf_less_than_subtree() {
+        // Effective leaf values of the SubTree are 1+2=3 and 1+3=4, both above 2.
+        let e0 = EventTree::Leaf(2);
+        let e1: EventTree = "(1, 2, 3)".parse().unwrap();
+
+        assert!(e0 < e1);
+        assert!(e1 > e0);
+        assert!(e0 <= e1);
+        assert!(e1 >= e0);
+    }
+
+    #[test]
+    fn test_ordering_leaf_greater_than_subtree() {
+        // Effective leaf values of the SubTree are 1+2=3 and 1+3=4, both below 10.
+        let e0 = EventTree::Leaf(10);
+        let e1: EventTree = "(1, 2, 3)".parse().unwrap();
+
+        assert!(e0 > e1);
+        assert!(e1 < e0);
+        assert!(e0 >= e1);
+        assert!(e1 <= e0);
+    }
+
+    #[test]
+    fn test_ordering_leaf_incomparable_with_subtree() {
+        // Effective leaf values of the SubTree are 1+0=1 and 1+5=6, straddling 3.
+        let e0 = EventTree::Leaf(3);
+        let e1: EventTree = "(1, 0, 5)".parse().unwrap();
+
+        assert_eq!(e0.partial_cmp(&e1), None);
+        assert!(e0 != e1);
+        assert!(!(e0 < e1));
+        assert!(!(e0 > e1));
+        assert!(!(e0 <= e1));
+        assert!(!(e0 >= e1));
+    }
+
+    #[test]
+    fn test_ordering_subtree_less_than_subtree() {
+        let e0: EventTree = "(0, 1, 1)".parse().unwrap();
+        let e1: EventTree = "(0, 3, 3)".parse().unwrap();
+
+        assert!(e0 < e1);
+        assert!(e1 > e0);
+    }
+
+    #[test]
+    fn test_ordering_nested_subtrees() {
+        let e0: EventTree = "(0, (0, 1, 0), 0)".parse().unwrap();
+        let e1: EventTree = "(0, (0, 2, 0), 1)".parse().unwrap();
+
+        assert!(e0 < e1);
+        assert!(e1 > e0);
+    }
+
+    #[test]
     fn test_diff_1() {
         let e0 = EventTree::Leaf(5);
         let e1 = EventTree::subtree(4, EventTree::Leaf(2), EventTree::Leaf(0));
