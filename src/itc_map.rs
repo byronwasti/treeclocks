@@ -99,6 +99,10 @@ impl<T> ItcMap<T> {
         removed
     }
 
+    pub fn is_complete(&self) -> bool {
+        self.index.is_complete()
+    }
+
     /// Returns (&Added, Removed)
     pub fn apply<'a>(&'a mut self, mut patch: Patch<T>) -> (IdAdditions<'a, T>, IdRemovals<T>) {
         let mut removed = vec![];
@@ -316,6 +320,15 @@ impl ItcIndex {
                     lr,
                 )
             }
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        use ItcIndex::*;
+        match self {
+            SubTree(l, r) => l.is_complete() && r.is_complete(),
+            Leaf(_) => true,
+            Unknown => false,
         }
     }
 
