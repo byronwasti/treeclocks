@@ -423,6 +423,87 @@ impl ItcIndex {
     }
 }
 
+// NOTE: Only safe for Ideal ItcMaps (with Ideal Id Trees)
+// NOTE: I thought this would be useful, and I think it still might be at somet point.
+#[allow(unused)]
+fn compare<F>(
+    (a_ix, a_ts): (&ItcIndex, &EventTree),
+    (b_ix, b_ts): (&ItcIndex, &EventTree),
+    compare_func: &F,
+) where
+    F: Fn(Option<(usize, u64)>, Option<(usize, u64)>),
+{
+    let (a, b) = match ((a_ix, a_ts), (b_ix, b_ts)) {
+        ((ItcIndex::Unknown, EventTree::Leaf(0)), (ItcIndex::Unknown, EventTree::Leaf(0))) => {
+            (None, None)
+        }
+        (
+            (ItcIndex::Leaf(a_ix), EventTree::Leaf(a_ts)),
+            (ItcIndex::Unknown, EventTree::Leaf(0)),
+        ) => (Some((*a_ix, *a_ts)), None),
+        (
+            (ItcIndex::Unknown, EventTree::Leaf(0)),
+            (ItcIndex::Leaf(b_ix), EventTree::Leaf(b_ts)),
+        ) => (None, Some((*b_ix, *b_ts))),
+        (
+            (ItcIndex::Leaf(a_ix), EventTree::Leaf(a_ts)),
+            (ItcIndex::Leaf(b_ix), EventTree::Leaf(b_ts)),
+        ) => (Some((*a_ix, *a_ts)), Some((*b_ix, *b_ts))),
+        (
+            (ItcIndex::SubTree(a_ix_l, a_ix_r), EventTree::SubTree(a_ts_lift, a_ts_l, a_ts_r)),
+            (ItcIndex::SubTree(b_ix_l, b_ix_r), EventTree::SubTree(b_ts_lift, b_ts_l, b_ts_r)),
+        ) => {
+            compare(
+                (a_ix_l, &a_ts_l.clone().lift(*a_ts_lift)),
+                (b_ix_l, &b_ts_l.clone().lift(*b_ts_lift)),
+                compare_func,
+            );
+            compare(
+                (a_ix_r, &a_ts_r.clone().lift(*a_ts_lift)),
+                (b_ix_r, &b_ts_r.clone().lift(*b_ts_lift)),
+                compare_func,
+            );
+            return;
+        }
+        (
+            (ItcIndex::SubTree(a_ix_l, a_ix_r), EventTree::SubTree(a_ts_lift, a_ts_l, a_ts_r)),
+            (b_ix, b_ts),
+        ) => {
+            compare(
+                (a_ix_l, &a_ts_l.clone().lift(*a_ts_lift)),
+                (b_ix, b_ts),
+                compare_func,
+            );
+            compare(
+                (a_ix_r, &a_ts_r.clone().lift(*a_ts_lift)),
+                (b_ix, b_ts),
+                compare_func,
+            );
+            return;
+        }
+        (
+            (a_ix, a_ts),
+            (ItcIndex::SubTree(b_ix_l, b_ix_r), EventTree::SubTree(b_ts_lift, b_ts_l, b_ts_r)),
+        ) => {
+            compare(
+                (a_ix, a_ts),
+                (b_ix_l, &b_ts_l.clone().lift(*b_ts_lift)),
+                compare_func,
+            );
+            compare(
+                (a_ix, a_ts),
+                (b_ix_r, &b_ts_r.clone().lift(*b_ts_lift)),
+                compare_func,
+            );
+            return;
+        }
+
+        _ => panic!("Data corruption in the ItcMap implementation"),
+    };
+
+    compare_func(a, b);
+}
+
 impl fmt::Display for ItcIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         use ItcIndex::*;
@@ -457,6 +538,156 @@ impl<T: fmt::Display> fmt::Display for Patch<T> {
 mod tests {
     use super::*;
     use crate::IdTree;
+
+    /// Runs the free `compare` function and collects every `(a, b)` pair it reports, in
+    /// traversal order.
+    fn collect_compare(
+        a: (&ItcIndex, &EventTree),
+        b: (&ItcIndex, &EventTree),
+    ) -> Vec<(Option<(usize, u64)>, Option<(usize, u64)>)> {
+        use std::cell::RefCell;
+
+        let results = RefCell::new(Vec::new());
+        compare(a, b, &|x, y| results.borrow_mut().push((x, y)));
+        results.into_inner()
+    }
+
+    #[test]
+    fn test_compare_both_empty() {
+        let ix = ItcIndex::Unknown;
+        let ts = EventTree::Leaf(0);
+
+        assert_eq!(collect_compare((&ix, &ts), (&ix, &ts)), vec![(None, None)]);
+    }
+
+    #[test]
+    fn test_compare_leaf_vs_empty() {
+        let a_ix = ItcIndex::Leaf(0);
+        let a_ts = EventTree::Leaf(5);
+        let b_ix = ItcIndex::Unknown;
+        let b_ts = EventTree::Leaf(0);
+
+        assert_eq!(
+            collect_compare((&a_ix, &a_ts), (&b_ix, &b_ts)),
+            vec![(Some((0, 5)), None)]
+        );
+        // And the mirror image.
+        assert_eq!(
+            collect_compare((&b_ix, &b_ts), (&a_ix, &a_ts)),
+            vec![(None, Some((0, 5)))]
+        );
+    }
+
+    #[test]
+    fn test_compare_leaf_vs_leaf() {
+        let a_ix = ItcIndex::Leaf(0);
+        let a_ts = EventTree::Leaf(5);
+        let b_ix = ItcIndex::Leaf(1);
+        let b_ts = EventTree::Leaf(9);
+
+        assert_eq!(
+            collect_compare((&a_ix, &a_ts), (&b_ix, &b_ts)),
+            vec![(Some((0, 5)), Some((1, 9)))]
+        );
+    }
+
+    #[test]
+    fn test_compare_matching_subtrees() {
+        // a: left=2+3=5, right=2+4=6
+        let a_ix = ItcIndex::subtree(ItcIndex::Leaf(0), ItcIndex::Leaf(1));
+        let a_ts = EventTree::subtree(2, EventTree::Leaf(3), EventTree::Leaf(4));
+
+        // b: left=0+2=2, right=0+0=0 (Unknown, so it must pair with an effective-0 leaf)
+        let b_ix = ItcIndex::subtree(ItcIndex::Leaf(2), ItcIndex::Unknown);
+        let b_ts = EventTree::subtree(0, EventTree::Leaf(2), EventTree::Leaf(0));
+
+        assert_eq!(
+            collect_compare((&a_ix, &a_ts), (&b_ix, &b_ts)),
+            vec![(Some((0, 5)), Some((2, 2))), (Some((1, 6)), None)]
+        );
+    }
+
+    #[test]
+    fn test_compare_subtree_vs_leaf() {
+        // a: left=2+1=3, right=2+3=5
+        let a_ix = ItcIndex::subtree(ItcIndex::Leaf(0), ItcIndex::Leaf(1));
+        let a_ts = EventTree::subtree(2, EventTree::Leaf(1), EventTree::Leaf(3));
+
+        // b has no substructure at all here, so it is compared against each of a's leaves in turn.
+        let b_ix = ItcIndex::Leaf(9);
+        let b_ts = EventTree::Leaf(4);
+
+        assert_eq!(
+            collect_compare((&a_ix, &a_ts), (&b_ix, &b_ts)),
+            vec![(Some((0, 3)), Some((9, 4))), (Some((1, 5)), Some((9, 4)))]
+        );
+        // And the mirror image.
+        assert_eq!(
+            collect_compare((&b_ix, &b_ts), (&a_ix, &a_ts)),
+            vec![(Some((9, 4)), Some((0, 3))), (Some((9, 4)), Some((1, 5)))]
+        );
+    }
+
+    #[test]
+    fn test_compare_subtree_vs_unknown() {
+        let a_ix = ItcIndex::subtree(ItcIndex::Leaf(0), ItcIndex::Leaf(1));
+        let a_ts = EventTree::subtree(2, EventTree::Leaf(1), EventTree::Leaf(3));
+
+        let b_ix = ItcIndex::Unknown;
+        let b_ts = EventTree::Leaf(0);
+
+        assert_eq!(
+            collect_compare((&a_ix, &a_ts), (&b_ix, &b_ts)),
+            vec![(Some((0, 3)), None), (Some((1, 5)), None)]
+        );
+    }
+
+    #[test]
+    fn test_compare_nested_subtrees() {
+        // Regression test for a monomorphization bug: the recursive calls used to pass
+        // `&compare_func` (rather than the already-reference-typed `compare_func`), so each
+        // level of recursion instantiated `compare` at a new type (`F`, `&F`, `&&F`, ...).
+        // That compiled fine as unused dead code, but blew the compiler's recursion limit the
+        // moment `compare` actually recursed more than a couple of levels, i.e. on any input with
+        // real nested structure like this one.
+        let a_ix = ItcIndex::subtree(
+            ItcIndex::subtree(ItcIndex::Leaf(0), ItcIndex::Leaf(1)),
+            ItcIndex::Leaf(2),
+        );
+        // left-left=1+2+0=3, left-right=1+2+3=6, right=1+5=6
+        let a_ts = EventTree::subtree(
+            1,
+            EventTree::subtree(2, EventTree::Leaf(0), EventTree::Leaf(3)),
+            EventTree::Leaf(5),
+        );
+
+        let b_ix = ItcIndex::Leaf(9);
+        let b_ts = EventTree::Leaf(4);
+
+        assert_eq!(
+            collect_compare((&a_ix, &a_ts), (&b_ix, &b_ts)),
+            vec![
+                (Some((0, 3)), Some((9, 4))),
+                (Some((1, 6)), Some((9, 4))),
+                (Some((2, 6)), Some((9, 4))),
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Data corruption")]
+    fn test_compare_panics_on_inconsistent_shapes() {
+        // `ItcIndex::Unknown` must always be paired with an effective-0 `EventTree::Leaf`; any
+        // other pairing means the index and timestamp trees have diverged, which `compare`
+        // treats as a fatal invariant violation rather than silently producing a wrong answer.
+        let a_ix = ItcIndex::Unknown;
+        let a_ts = EventTree::Leaf(3);
+
+        let b_ix = ItcIndex::Leaf(0);
+        let b_ts = EventTree::Leaf(1);
+
+        collect_compare((&a_ix, &a_ts), (&b_ix, &b_ts));
+    }
 
     #[test]
     fn test_inserts_basic() {

@@ -138,7 +138,7 @@ impl EventTree {
         }
     }
 
-    fn lift(self, m: u64) -> Self {
+    pub(crate) fn lift(self, m: u64) -> Self {
         use EventTree::*;
         match self {
             Leaf(val) => Leaf(val + m),
