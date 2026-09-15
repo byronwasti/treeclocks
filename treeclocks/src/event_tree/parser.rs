@@ -40,7 +40,9 @@ fn parse_u64(chars: &mut Peekable<Chars>) -> Result<u64, ParseEventTreeError> {
     if digits.is_empty() {
         return Err(ParseEventTreeError::ExpectedDigit);
     }
-    digits.parse().map_err(|_| ParseEventTreeError::NumberOverflow)
+    digits
+        .parse()
+        .map_err(|_| ParseEventTreeError::NumberOverflow)
 }
 
 fn parse_event_tree(chars: &mut Peekable<Chars>) -> Result<EventTree, ParseEventTreeError> {

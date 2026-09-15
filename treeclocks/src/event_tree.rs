@@ -76,6 +76,26 @@ impl EventTree {
         }
     }
 
+    /// Returns an `EventTree` shaped like `self`, with every part not owned
+    /// by `id` zeroed out.
+    ///
+    /// Because ownership is preserved positionally (rather than collapsed
+    /// into a single value), the results of `get` for two `id`s that
+    /// partition the same domain can be losslessly recombined with `join`.
+    pub fn get(self, id: &IdTree) -> EventTree {
+        use EventTree::*;
+        match (self, id) {
+            (_, IdTree::Zero) => Leaf(0),
+            (e, IdTree::One) => e,
+            (Leaf(val), IdTree::SubTree(l, r)) => {
+                EventTree::subtree(0, Leaf(val).get(l), Leaf(val).get(r)).norm()
+            }
+            (SubTree(val, l0, r0), IdTree::SubTree(l1, r1)) => {
+                EventTree::subtree(0, l0.lift(val).get(l1), r0.lift(val).get(r1)).norm()
+            }
+        }
+    }
+
     pub fn contains(&self, id: &IdTree) -> bool {
         match (self, id) {
             (EventTree::Leaf(0), _) | (_, IdTree::Zero) => false,
@@ -601,5 +621,72 @@ mod tests {
 
         let e = e1.mask(&e0);
         assert_eq!(e.to_string(), "(1, 0, 2)");
+    }
+
+    #[test]
+    fn test_get_zero_id() {
+        let e = EventTree::subtree(2, EventTree::Leaf(1), EventTree::Leaf(3));
+        assert_eq!(e.get(&IdTree::zero()), EventTree::Leaf(0));
+    }
+
+    #[test]
+    fn test_get_one_id() {
+        let e = EventTree::subtree(2, EventTree::Leaf(1), EventTree::Leaf(3));
+        assert_eq!(e.clone().get(&IdTree::one()), e);
+    }
+
+    #[test]
+    fn test_get_leaf() {
+        let e = EventTree::Leaf(5);
+
+        let l = IdTree::subtree(IdTree::one(), IdTree::zero());
+        assert_eq!(e.clone().get(&l).to_string(), "(0, 5, 0)");
+
+        let r = IdTree::subtree(IdTree::zero(), IdTree::one());
+        assert_eq!(e.clone().get(&r).to_string(), "(0, 0, 5)");
+
+        let l2 = IdTree::subtree(
+            IdTree::subtree(IdTree::one(), IdTree::zero()),
+            IdTree::zero(),
+        );
+        assert_eq!(e.get(&l2).to_string(), "(0, (0, 5, 0), 0)");
+    }
+
+    #[test]
+    fn test_get_subtree() {
+        let e = EventTree::subtree(2, EventTree::Leaf(1), EventTree::Leaf(3));
+
+        let l = IdTree::subtree(IdTree::one(), IdTree::zero());
+        assert_eq!(e.clone().get(&l).to_string(), "(0, 3, 0)");
+
+        let r = IdTree::subtree(IdTree::zero(), IdTree::one());
+        assert_eq!(e.get(&r).to_string(), "(0, 0, 5)");
+    }
+
+    #[test]
+    fn test_get_complicated_id() {
+        let e = EventTree::subtree(
+            0,
+            EventTree::subtree(0, EventTree::Leaf(5), EventTree::Leaf(2)),
+            EventTree::subtree(0, EventTree::Leaf(1), EventTree::Leaf(9)),
+        );
+
+        let id = IdTree::subtree(
+            IdTree::subtree(IdTree::one(), IdTree::zero()),
+            IdTree::subtree(IdTree::zero(), IdTree::one()),
+        );
+
+        assert_eq!(e.get(&id).to_string(), "(0, (0, 5, 0), (0, 0, 9))");
+    }
+
+    #[test]
+    fn test_get_fragments_recombine_via_join() {
+        let e = EventTree::subtree(3, EventTree::Leaf(2), EventTree::Leaf(0));
+
+        let l = IdTree::subtree(IdTree::one(), IdTree::zero());
+        let r = IdTree::subtree(IdTree::zero(), IdTree::one());
+
+        let recombined = e.clone().get(&l).join(e.clone().get(&r));
+        assert_eq!(recombined, e);
     }
 }

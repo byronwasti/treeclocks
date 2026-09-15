@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use treeclocks::{EventTree, IdTree, ItcMap};
+use treeclocks::{EventTree, IdTree};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about=None)]
@@ -20,5 +20,14 @@ enum Command {
 }
 
 fn main() {
-    println!("Hello, world!");
+    let args = Args::parse();
+
+    match args.command {
+        Command::Get {
+            event_tree,
+            id_tree,
+        } => {
+            println!("{}", event_tree.get(&id_tree));
+        }
+    }
 }
