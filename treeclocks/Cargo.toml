@@ -1,0 +1,24 @@
+[package]
+name = "treeclocks"
+version = "0.7.3"
+edition = "2024"
+readme = "README.md"
+authors = [
+    "Byron Wasti <dev@byronwasti.com>"
+]
+categories = ["data-structures"]
+keywords = ["distributed", "timestamps", "utility", "tree"]
+description = "Various Tree Clock data-structures and utilities"
+homepage = "https://github.com/byronwasti/treeclocks"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/byronwasti/treeclocks"
+publish = true
+
+[dependencies]
+serde = { version = "1.0.218", features = ["derive"], optional = true }
+thiserror = { version = "2.0.12", optional = true }
+
+[features]
+default = ["parse"]
+serde = ["dep:serde"]
+parse = ["dep:thiserror"]
