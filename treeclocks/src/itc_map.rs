@@ -25,18 +25,17 @@ impl<T> ItcMap<T> {
         &self.timestamp
     }
 
+    /// Looks up the value stored under exactly `id`.
+    ///
+    /// Only an exact match returns a value. An `id` that merely overlaps one
+    /// or more stored regions returns `None` — for instance an id obtained by
+    /// joining two ids that the map still holds as separate entries. The
+    /// index walk finds the first entry underneath such an id, which is why
+    /// the stored id is re-checked here rather than trusted.
     pub fn get(&self, id: &IdTree) -> Option<&T> {
-        self.index
-            .get(id)
-            .and_then(|idx| self.data[idx].as_ref())
-            .map(|(sid, d)| {
-                if id == sid {
-                    d
-                } else {
-                    // TODO: Are there cases where this isn't a panic?
-                    panic!("ItcIndex out of sync with ItcMap")
-                }
-            })
+        let (stored_id, value) = self.index.get(id).and_then(|idx| self.data[idx].as_ref())?;
+
+        (id == stored_id).then_some(value)
     }
 
     pub fn len(&self) -> usize {
@@ -44,7 +43,7 @@ impl<T> ItcMap<T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.data.iter().all(Option::is_none)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&IdTree, &T)> {
@@ -54,7 +53,16 @@ impl<T> ItcMap<T> {
             .map(|(i, d)| (i, d))
     }
 
+    /// # Panics
+    ///
+    /// Panics if `id` owns no part of the interval; such an entry could never
+    /// be indexed or read back. See [`IdTree::owns_nothing`].
     pub fn insert(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
+        assert!(
+            !id.owns_nothing(),
+            "ItcMap::insert: `id` owns no part of the interval"
+        );
+
         self.update_timestamp(&id);
         self.insert_without_event(id, value)
     }
@@ -68,7 +76,15 @@ impl<T> ItcMap<T> {
         }
     }
 
+    /// # Panics
+    ///
+    /// Panics if `id` owns no part of the interval. See [`Self::insert`].
     pub fn insert_without_event(&mut self, id: IdTree, mut value: T) -> Vec<(IdTree, T)> {
+        assert!(
+            !id.owns_nothing(),
+            "ItcMap::insert_without_event: `id` owns no part of the interval"
+        );
+
         let idx = if let Some(idx) = self.index.get(&id) {
             if let Some(v) = &mut self.data[idx] {
                 if v.0 == id {
@@ -359,7 +375,9 @@ impl ItcIndex {
             (ItcIndex::SubTree(l0, r0), IdTree::SubTree(l1, r1)) => {
                 let l = l0.purge(l1, idx);
                 let r = r0.purge(r1, idx);
-                ItcIndex::SubTree(Box::new(l), Box::new(r))
+                // Purging can empty out both halves; keep the same normalized
+                // shape `insert` maintains rather than leaving `[?, ?]` behind.
+                ItcIndex::SubTree(Box::new(l), Box::new(r)).norm()
             }
             (s, _) => s,
         }
@@ -911,6 +929,63 @@ mod tests {
         map0.apply(patch);
 
         assert_eq!(map0.timestamp().to_string(), "(5, 1, 0)");
+    }
+
+    #[test]
+    fn test_stale_patch_does_not_clobber_newer_value() {
+        // A broadcast patch carries entries the receiver already has fresher
+        // copies of; `apply` must drop those rather than overwrite.
+        let (ia, ib) = IdTree::one().fork();
+
+        let mut a: ItcMap<i32> = ItcMap::new();
+        let mut b: ItcMap<i32> = ItcMap::new();
+
+        a.insert(ia.clone(), 1);
+        b.insert(ib.clone(), 10);
+
+        // A learns about B's entry.
+        let patch = b.diff(a.timestamp()).expect("Some patch");
+        a.apply(patch);
+
+        // Both sides then move on independently.
+        a.insert(ia.clone(), 2);
+        b.insert(ib.clone(), 11);
+
+        // A broadcasts everything it has, rather than a patch cut for B.
+        let full = a.diff(&EventTree::Leaf(0)).expect("Some patch");
+        b.apply(full);
+
+        assert_eq!(b.get(&ia), Some(&2), "should take A's newer entry");
+        assert_eq!(b.get(&ib), Some(&11), "should keep its own newer entry");
+    }
+
+    #[test]
+    fn test_get_straddling_id_returns_none() {
+        let mut m: ItcMap<&'static str> = ItcMap::new();
+
+        let a = IdTree::subtree(
+            IdTree::subtree(IdTree::one(), IdTree::zero()),
+            IdTree::zero(),
+        );
+        let b = IdTree::subtree(IdTree::zero(), IdTree::one());
+        m.insert(a.clone(), "a");
+        m.insert(b.clone(), "b");
+
+        // An id spanning both entries matches neither; this used to panic.
+        let joined = a.clone().join(b.clone());
+        assert_eq!(joined.to_string(), "((1, 0), 1)");
+        assert_eq!(m.get(&joined), None);
+
+        // Exact lookups are unaffected.
+        assert_eq!(m.get(&a), Some(&"a"));
+        assert_eq!(m.get(&b), Some(&"b"));
+    }
+
+    #[test]
+    #[should_panic(expected = "owns no part of the interval")]
+    fn test_insert_zero_id_panics() {
+        let mut m: ItcMap<i32> = ItcMap::new();
+        m.insert(IdTree::zero(), 1);
     }
 
     fn patch_clone<T: Clone>(map: &ItcMap<T>) -> ItcMap<T> {
