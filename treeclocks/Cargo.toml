@@ -1,8 +1,8 @@
 [package]
 name = "treeclocks"
-version = "0.7.3"
+version = "0.8.0"
 edition = "2024"
-readme = "README.md"
+readme = "../README.md"
 authors = [
     "Byron Wasti <dev@byronwasti.com>"
 ]
