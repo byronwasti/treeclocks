@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use treeclocks::{IdTree, EventTree, ItcMap, ParseEventTreeError};
+use treeclocks::{EventTree, IdTree, ItcMap};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about=None)]
@@ -8,7 +8,7 @@ struct Args {
     command: Command,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Command {
     Get {
         #[arg(short, long)]

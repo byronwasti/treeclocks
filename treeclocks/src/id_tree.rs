@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 #[cfg(feature = "parse")]
-mod parser;
+pub mod parser;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
