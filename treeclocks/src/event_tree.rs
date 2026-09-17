@@ -1,11 +1,12 @@
 use crate::IdTree;
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 
 #[cfg(feature = "parse")]
 pub mod parser;
 
 /// A near one-to-one replication of the original paper.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EventTree {
     Leaf(u64),
@@ -45,12 +46,38 @@ impl EventTree {
         }
     }
 
+    /// Records a new event owned by `id`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` owns no part of the interval (`IdTree::Zero`, or any
+    /// non-normalized equivalent such as `(0, 0)`). A node that owns nothing
+    /// has nowhere to put an event, so there is no meaningful result to
+    /// return; see [`IdTree::owns_nothing`].
     pub fn event(self, id: &IdTree) -> Self {
-        let fill = self.fill(id);
-        if fill == self {
+        assert!(
+            !id.owns_nothing(),
+            "EventTree::event: `id` owns no part of the interval, so it cannot record an event"
+        );
+
+        // Both branches below assume a normal form. `fill` decides between them
+        // by asking whether it found any slack, which it can only answer
+        // shape-for-shape; on a non-normalized input it would report the
+        // rewrite to normal form as if it were the recorded event, and return
+        // without incrementing anything.
+        let this = self.norm();
+
+        let fill = this.fill(id);
+        if fill.structural_eq(&this) {
+            // `N` is the cost `grow` charges for deepening the tree. Any value
+            // strictly greater than the longest root-to-leaf path makes `grow`
+            // prefer descending an existing branch over inflating a leaf, and
+            // `depth() + 1` is comfortably such a bound. The exact value is
+            // otherwise immaterial: when both branches inflate, `N` is common
+            // to both costs and cancels out of the comparison.
             #[allow(non_snake_case)]
-            let N = self.depth(0);
-            let (tree, _) = self.grow(id, N + 1);
+            let N = this.depth(0);
+            let (tree, _) = this.grow(id, N + 1);
             tree
         } else {
             fill
@@ -96,12 +123,22 @@ impl EventTree {
         }
     }
 
+    /// Returns whether `self` records at least one event inside the region
+    /// owned by `id`.
     pub fn contains(&self, id: &IdTree) -> bool {
         match (self, id) {
             (EventTree::Leaf(0), _) | (_, IdTree::Zero) => false,
-            (EventTree::Leaf(_), _) => true,
+            // Every leaf at or below this point is non-zero — a non-zero root
+            // lifts everything beneath it — so the question reduces to whether
+            // `id` owns any of the region at all. That has to go through
+            // `owns_nothing`, since the `IdTree::Zero` arm above only catches
+            // ids that are literally `Zero`, not shapes like `(0, 0)`.
+            (EventTree::Leaf(_), id) => !id.owns_nothing(),
             (EventTree::SubTree(0, l, r), id @ IdTree::One) => l.contains(id) || r.contains(id),
-            (EventTree::SubTree(_, _, _), _) => true,
+            (EventTree::SubTree(0, l, r), IdTree::SubTree(il, ir)) => {
+                l.contains(il) || r.contains(ir)
+            }
+            (EventTree::SubTree(_, _, _), id) => !id.owns_nothing(),
         }
     }
 
@@ -148,6 +185,8 @@ impl EventTree {
         }
     }
 
+    /// Number of nodes along the deepest root-to-leaf path, counting from
+    /// `at`. A bare `Leaf` has depth 1.
     fn depth(&self, at: u64) -> u64 {
         use EventTree::*;
         match self {
@@ -262,7 +301,41 @@ impl EventTree {
                     }
                 }
             }
-            _ => unreachable!(),
+            // `event` only calls `grow` on a normalized tree whose `fill(id)`
+            // is structurally unchanged, and that equality guarantees an event
+            // `Leaf` wherever `id` holds a `One`. `event` also rejects ids that
+            // own nothing, so `id` is never `Zero` here.
+            _ => unreachable!("grow: id and event tree shapes disagree"),
+        }
+    }
+
+    /// Structural comparison: same shape, same values. Callers are responsible
+    /// for normalizing first if they want semantic equality.
+    fn structural_eq(&self, other: &Self) -> bool {
+        use EventTree::*;
+        match (self, other) {
+            (Leaf(a), Leaf(b)) => a == b,
+            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => {
+                a == b && l0.structural_eq(l1) && r0.structural_eq(r1)
+            }
+            _ => false,
+        }
+    }
+
+    /// Hashes shape and values verbatim. Must agree with [`Self::structural_eq`].
+    fn structural_hash<H: Hasher>(&self, state: &mut H) {
+        use EventTree::*;
+        match self {
+            Leaf(val) => {
+                state.write_u8(0);
+                state.write_u64(*val);
+            }
+            SubTree(val, l, r) => {
+                state.write_u8(1);
+                state.write_u64(*val);
+                l.structural_hash(state);
+                r.structural_hash(state);
+            }
         }
     }
 }
@@ -320,18 +393,29 @@ impl PartialOrd for EventTree {
 }
 
 impl PartialEq for EventTree {
+    /// Two `EventTree`s are equal when they record the same events, regardless
+    /// of the shape they are written in: `Leaf(3)` and `(0, 3, 3)` both say
+    /// "three events everywhere", and so compare equal.
+    ///
+    /// Comparing normal forms is what keeps this consistent with
+    /// [`PartialOrd`], which has always compared trees by the events they
+    /// denote rather than by shape.
     fn eq(&self, other: &Self) -> bool {
-        use EventTree::*;
-        match (self, other) {
-            (Leaf(a), Leaf(b)) if a == b => true,
-            (Leaf(_), Leaf(_)) => false,
-            (SubTree(a, l0, r0), SubTree(b, l1, r1)) if a == b => l0.eq(l1) && r0.eq(r1),
-            _ => false,
-        }
+        // Fast path: identical shapes need no normalization, and the trees the
+        // library itself produces are already normalized.
+        self.structural_eq(other) || self.norm().structural_eq(&other.norm())
     }
 }
 
 impl Eq for EventTree {}
+
+impl Hash for EventTree {
+    /// Hashes the normal form, so that trees which compare equal under
+    /// [`PartialEq`] hash equal.
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.norm().structural_hash(state);
+    }
+}
 
 impl std::fmt::Display for EventTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -677,6 +761,145 @@ mod tests {
         );
 
         assert_eq!(e.get(&id).to_string(), "(0, (0, 5, 0), (0, 0, 9))");
+    }
+
+    #[test]
+    fn test_contains_recurses_into_subtree_ids() {
+        // Events live only on the left, so only left-owning ids are contained.
+        let e: EventTree = "(0, 2, 0)".parse().unwrap();
+
+        let l = IdTree::subtree(IdTree::one(), IdTree::zero());
+        let r = IdTree::subtree(IdTree::zero(), IdTree::one());
+
+        assert!(e.contains(&l));
+        assert!(!e.contains(&r));
+        assert!(e.contains(&IdTree::one()));
+        assert!(!e.contains(&IdTree::zero()));
+
+        // Deeper ids resolve against the matching side of the tree.
+        let e: EventTree = "(0, (0, 0, 1), 0)".parse().unwrap();
+        let ll = IdTree::subtree(
+            IdTree::subtree(IdTree::one(), IdTree::zero()),
+            IdTree::zero(),
+        );
+        let lr = IdTree::subtree(
+            IdTree::subtree(IdTree::zero(), IdTree::one()),
+            IdTree::zero(),
+        );
+        assert!(!e.contains(&ll));
+        assert!(e.contains(&lr));
+    }
+
+    #[test]
+    fn test_contains_nonzero_root_covers_every_id() {
+        // A non-zero root lifts every leaf, so any non-empty id owns events.
+        let e: EventTree = "(1, 0, 0)".parse().unwrap();
+        assert!(e.contains(&IdTree::subtree(IdTree::one(), IdTree::zero())));
+        assert!(e.contains(&IdTree::subtree(IdTree::zero(), IdTree::one())));
+        assert!(!e.contains(&IdTree::zero()));
+    }
+
+    #[test]
+    fn test_contains_rejects_non_normalized_empty_ids() {
+        // `(0, 0)` and friends own nothing, just like a bare `0`.
+        let empty = IdTree::subtree(
+            IdTree::subtree(IdTree::zero(), IdTree::zero()),
+            IdTree::zero(),
+        );
+
+        assert!(!EventTree::Leaf(2).contains(&empty));
+        assert!(!EventTree::subtree(1, EventTree::Leaf(0), EventTree::Leaf(3)).contains(&empty));
+        assert!(!EventTree::subtree(0, EventTree::Leaf(0), EventTree::Leaf(3)).contains(&empty));
+    }
+
+    #[test]
+    fn test_event_on_non_normalized_tree_records_an_event() {
+        // `(0, 1, 1)` is `1` written the long way. `event` used to mistake the
+        // rewrite to normal form for the event itself and return `1`.
+        let e = EventTree::subtree(0, EventTree::Leaf(1), EventTree::Leaf(1));
+        assert_eq!(e.clone().event(&IdTree::one()), EventTree::Leaf(2));
+
+        // Same story one level down, against a partial id.
+        let e = EventTree::subtree(
+            0,
+            EventTree::subtree(0, EventTree::Leaf(2), EventTree::Leaf(2)),
+            EventTree::Leaf(0),
+        );
+        let l = IdTree::subtree(IdTree::one(), IdTree::zero());
+        assert_eq!(e.event(&l).to_string(), "(0, 3, 0)");
+    }
+
+    #[test]
+    #[should_panic(expected = "owns no part of the interval")]
+    fn test_event_with_zero_id_panics() {
+        // Used to hit `unreachable!()` deep inside `grow`.
+        let _ = EventTree::Leaf(0).event(&IdTree::zero());
+    }
+
+    #[test]
+    #[should_panic(expected = "owns no part of the interval")]
+    fn test_event_with_non_normalized_zero_id_panics() {
+        let id = IdTree::subtree(IdTree::zero(), IdTree::zero());
+        let _ = EventTree::subtree(0, EventTree::Leaf(1), EventTree::Leaf(0)).event(&id);
+    }
+
+    #[test]
+    fn test_eq_agrees_with_partial_cmp() {
+        // Same events, different shapes.
+        let pairs = [
+            (
+                EventTree::Leaf(3),
+                EventTree::subtree(0, EventTree::Leaf(3), EventTree::Leaf(3)),
+            ),
+            (
+                EventTree::Leaf(3),
+                EventTree::subtree(3, EventTree::Leaf(0), EventTree::Leaf(0)),
+            ),
+            (
+                EventTree::subtree(1, EventTree::Leaf(2), EventTree::Leaf(0)),
+                EventTree::subtree(
+                    0,
+                    EventTree::subtree(0, EventTree::Leaf(3), EventTree::Leaf(3)),
+                    EventTree::Leaf(1),
+                ),
+            ),
+        ];
+
+        for (a, b) in pairs {
+            assert_eq!(a.partial_cmp(&b), Some(Ordering::Equal), "{a} vs {b}");
+            assert_eq!(a, b, "{a} vs {b}");
+            assert!(a <= b && a >= b);
+            assert!(!(a < b) && !(a > b));
+        }
+    }
+
+    #[test]
+    fn test_eq_still_separates_different_events() {
+        let a = EventTree::Leaf(3);
+        let b = EventTree::subtree(0, EventTree::Leaf(3), EventTree::Leaf(4));
+
+        assert_ne!(a, b);
+        assert_eq!(a.partial_cmp(&b), Some(Ordering::Less));
+    }
+
+    #[test]
+    fn test_hash_matches_eq() {
+        use std::collections::hash_map::DefaultHasher;
+
+        fn hash(e: &EventTree) -> u64 {
+            let mut h = DefaultHasher::new();
+            e.hash(&mut h);
+            h.finish()
+        }
+
+        let a = EventTree::Leaf(3);
+        let b = EventTree::subtree(0, EventTree::Leaf(3), EventTree::Leaf(3));
+        assert_eq!(a, b);
+        assert_eq!(hash(&a), hash(&b));
+
+        let c = EventTree::subtree(0, EventTree::Leaf(3), EventTree::Leaf(4));
+        assert_ne!(a, c);
+        assert_ne!(hash(&a), hash(&c));
     }
 
     #[test]
