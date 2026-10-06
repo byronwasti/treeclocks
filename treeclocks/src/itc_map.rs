@@ -2,6 +2,8 @@ use crate::{EventTree, IdTree};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+pub mod tree;
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItcMap<T> {

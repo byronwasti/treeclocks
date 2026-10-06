@@ -78,10 +78,6 @@ impl EventTree {
 
     /// Returns an `EventTree` shaped like `self`, with every part not owned
     /// by `id` zeroed out.
-    ///
-    /// Because ownership is preserved positionally (rather than collapsed
-    /// into a single value), the results of `get` for two `id`s that
-    /// partition the same domain can be losslessly recombined with `join`.
     pub fn get(self, id: &IdTree) -> EventTree {
         use EventTree::*;
         match (self, id) {
@@ -93,6 +89,22 @@ impl EventTree {
             (SubTree(val, l0, r0), IdTree::SubTree(l1, r1)) => {
                 EventTree::subtree(0, l0.lift(val).get(l1), r0.lift(val).get(r1)).norm()
             }
+        }
+    }
+
+    /// Returns the exact value at `id`, `None` if `id` points to a subtree.
+    /// TODO: Also assert this is an Ideal IdTree; this only works for ideal
+    pub fn get_exact(self, id: &IdTree) -> Option<u64> {
+        use EventTree::*;
+        match (self, id) {
+            (_, IdTree::Zero) => None,
+            (Leaf(val), IdTree::One) => Some(val),
+            (SubTree(..), IdTree::One) => None,
+            (Leaf(val), IdTree::SubTree(..)) => Some(val),
+            (SubTree(val, l0, r0), IdTree::SubTree(l1, r1)) => l0
+                .lift(val)
+                .get_exact(l1)
+                .or_else(|| r0.lift(val).get_exact(r1)),
         }
     }
 
