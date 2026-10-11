@@ -81,7 +81,7 @@ impl FromStr for EventTree {
         if chars.next().is_some() {
             return Err(ParseEventTreeError::TrailingInput);
         }
-        Ok(tree)
+        Ok(tree.norm())
     }
 }
 
@@ -91,18 +91,23 @@ mod tests {
 
     #[test]
     fn test_parse() {
-        let strs = ["3", "(1, 2, 3)", "(2, (0, 1, 0), 3)", "(1, 2, (3, 4, 5))"];
+        let strs = [
+            ("3", "3"),
+            ("(1, 2, 3)", "(3, 0, 1)"),
+            ("(2, (0, 1, 0), 3)", "(2, (0, 1, 0), 3)"),
+            ("(1, 2, (3, 4, 5))", "(3, 0, (5, 0, 1))"),
+        ];
 
-        for s in strs {
-            let event: EventTree = s.parse().expect(&format!("Unable to parse {s}"));
-            assert_eq!(format!("{event}"), s);
+        for (s, exp) in strs {
+            let e: EventTree = s.parse().expect(&format!("Unable to parse {s}"));
+            assert_eq!(e.to_string(), exp);
         }
     }
 
     #[test]
     fn test_parse_ignores_extra_whitespace() {
         let event: EventTree = "(  1 ,  2 ,   3  )".parse().unwrap();
-        assert_eq!(format!("{event}"), "(1, 2, 3)");
+        assert_eq!(format!("{event}"), "(3, 0, 1)");
     }
 
     #[test]

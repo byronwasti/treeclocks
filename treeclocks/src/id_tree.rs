@@ -23,6 +23,7 @@ impl IdTree {
         Self::Zero
     }
 
+    /// Does not automatically call `norm`. Must be done manually.
     pub fn subtree(left: IdTree, right: IdTree) -> Self {
         Self::SubTree(Box::new(left), Box::new(right))
     }
@@ -56,6 +57,9 @@ impl IdTree {
 
     /// Consumes to create many Ids
     pub fn fork_many(self, count: usize) -> Vec<Self> {
+        // TODO: Use a type for this
+        assert!(count > 0, "IdTree::fork_many count must be greater than 0");
+
         if count == 1 {
             return vec![self];
         }
@@ -94,7 +98,7 @@ impl IdTree {
         }
     }
 
-    fn norm(&self) -> Self {
+    pub fn norm(self) -> Self {
         use IdTree::*;
         match self {
             SubTree(l, r) => {

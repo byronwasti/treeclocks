@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 pub mod parser;
 
 /// A near one-to-one replication of the original paper.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EventTree {
     Leaf(u64),
@@ -111,9 +111,13 @@ impl EventTree {
     pub fn contains(&self, id: &IdTree) -> bool {
         match (self, id) {
             (EventTree::Leaf(0), _) | (_, IdTree::Zero) => false,
-            (EventTree::Leaf(_), _) => true,
-            (EventTree::SubTree(0, l, r), id @ IdTree::One) => l.contains(id) || r.contains(id),
-            (EventTree::SubTree(_, _, _), _) => true,
+            (EventTree::Leaf(_), IdTree::One | IdTree::SubTree(..)) => true,
+            (EventTree::SubTree(a, l, r), id @ IdTree::One) => {
+                l.clone().lift(*a).contains(id) || r.clone().lift(*a).contains(id)
+            }
+            (EventTree::SubTree(a, l0, r0), IdTree::SubTree(l1, r1)) => {
+                l0.clone().lift(*a).contains(l1) || r0.clone().lift(*a).contains(r1)
+            }
         }
     }
 
@@ -250,6 +254,7 @@ impl EventTree {
         }
     }
 
+    // TODO: This is bugged I think
     #[allow(non_snake_case)]
     fn grow(&self, id: &IdTree, N: u64) -> (Self, u64) {
         match (id, self) {
@@ -342,20 +347,6 @@ impl PartialOrd for EventTree {
         }
     }
 }
-
-impl PartialEq for EventTree {
-    fn eq(&self, other: &Self) -> bool {
-        use EventTree::*;
-        match (self, other) {
-            (Leaf(a), Leaf(b)) if a == b => true,
-            (Leaf(_), Leaf(_)) => false,
-            (SubTree(a, l0, r0), SubTree(b, l1, r1)) if a == b => l0.eq(l1) && r0.eq(r1),
-            _ => false,
-        }
-    }
-}
-
-impl Eq for EventTree {}
 
 impl std::fmt::Display for EventTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -607,9 +598,9 @@ mod tests {
         assert_eq!(
             e,
             EventTree::subtree(
-                1,
-                EventTree::Leaf(2),
-                EventTree::subtree(3, EventTree::Leaf(4), EventTree::Leaf(5)),
+                3,
+                EventTree::Leaf(0),
+                EventTree::subtree(5, EventTree::Leaf(0), EventTree::Leaf(1)),
             )
         );
     }
@@ -627,7 +618,8 @@ mod tests {
             6,
             EventTree::Leaf(0),
             EventTree::subtree(0, EventTree::Leaf(2), EventTree::Leaf(1)),
-        );
+        )
+        .norm();
         let s = e.to_string();
         let parsed: EventTree = s.parse().unwrap();
         assert_eq!(e, parsed);
@@ -720,5 +712,70 @@ mod tests {
         let id: IdTree = "(1, (0, 1))".parse().unwrap();
 
         assert_eq!(e.mask_out(&id).to_string(), "(0, 0, (0, 14, 0))");
+    }
+
+    #[test]
+    fn test_contains_recurses_into_subtree_ids() {
+        // Events live only on the left, so only left-owning ids are contained.
+        let e: EventTree = "(0, 2, 0)".parse().unwrap();
+
+        let l = IdTree::subtree(IdTree::one(), IdTree::zero());
+        let r = IdTree::subtree(IdTree::zero(), IdTree::one());
+
+        assert!(e.contains(&l));
+        assert!(!e.contains(&r));
+        assert!(e.contains(&IdTree::one()));
+        assert!(!e.contains(&IdTree::zero()));
+
+        // Deeper ids resolve against the matching side of the tree.
+        let e: EventTree = "(0, (0, 0, 1), 0)".parse().unwrap();
+        let ll = IdTree::subtree(
+            IdTree::subtree(IdTree::one(), IdTree::zero()),
+            IdTree::zero(),
+        );
+        let lr = IdTree::subtree(
+            IdTree::subtree(IdTree::zero(), IdTree::one()),
+            IdTree::zero(),
+        );
+        assert!(!e.contains(&ll));
+        assert!(e.contains(&lr));
+    }
+
+    #[test]
+    fn test_contains_nonzero_root_covers_every_id() {
+        // A non-zero root lifts every leaf, so any non-empty id owns events.
+        let e: EventTree = "(1, 0, 0)".parse().unwrap();
+        assert!(e.contains(&IdTree::subtree(IdTree::one(), IdTree::zero())));
+        assert!(e.contains(&IdTree::subtree(IdTree::zero(), IdTree::one())));
+        assert!(!e.contains(&IdTree::zero()));
+    }
+
+    #[test]
+    fn test_contains_rejects_non_normalized_empty_ids() {
+        // `(0, 0)` and friends own nothing, just like a bare `0`.
+        let empty = IdTree::subtree(
+            IdTree::subtree(IdTree::zero(), IdTree::zero()),
+            IdTree::zero(),
+        ).norm();
+
+        assert!(!EventTree::Leaf(2).contains(&empty));
+        assert!(!EventTree::subtree(1, EventTree::Leaf(0), EventTree::Leaf(3)).contains(&empty));
+        assert!(!EventTree::subtree(0, EventTree::Leaf(0), EventTree::Leaf(3)).contains(&empty));
+    }
+
+    #[test]
+    #[should_panic(expected = "owns no part of the interval")]
+    fn test_event_with_zero_id_panics() {
+        // Used to hit `unreachable!()` deep inside `grow`.
+        let _ = EventTree::Leaf(0).event(&IdTree::zero());
+    }
+
+    #[test]
+    fn test_eq_still_separates_different_events() {
+        let a = EventTree::Leaf(3);
+        let b = EventTree::subtree(0, EventTree::Leaf(3), EventTree::Leaf(4));
+
+        assert_ne!(a, b);
+        assert_eq!(a.partial_cmp(&b), Some(Ordering::Less));
     }
 }

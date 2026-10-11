@@ -52,7 +52,7 @@ impl<T> ItcMap<T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.data.iter().all(Option::is_none)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&IdTree, &T)> {
