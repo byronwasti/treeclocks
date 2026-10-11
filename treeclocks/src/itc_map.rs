@@ -552,8 +552,8 @@ impl fmt::Display for ItcIndex {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Patch<T> {
-    timestamp: EventTree,
-    inner: Vec<(IdTree, T)>,
+    pub timestamp: EventTree,
+    pub inner: Vec<(IdTree, T)>,
 }
 
 impl<T: fmt::Display> fmt::Display for Patch<T> {
