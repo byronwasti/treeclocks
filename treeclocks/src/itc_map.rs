@@ -29,6 +29,10 @@ impl<T> ItcMap<T> {
         &self.timestamp
     }
 
+    pub fn set_timestamp(&mut self, timestamp: EventTree) {
+        self.timestamp = timestamp;
+    }
+
     pub fn get(&self, id: &IdTree) -> Option<&T> {
         self.index
             .get(id)
