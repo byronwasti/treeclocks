@@ -122,16 +122,28 @@ impl EventTree {
         use EventTree::*;
         match (self, other) {
             (_, Leaf(0)) => Leaf(0),
-            (Leaf(a), Leaf(_)) => Leaf(*a),
-            (a @ SubTree(..), Leaf(_)) => a.clone(),
+            (a, Leaf(_)) => a.clone(),
             (Leaf(a), b @ SubTree(..)) => Self::subtree(0, Leaf(*a), Leaf(*a)).mask(b).norm(),
-            (SubTree(a, l0, r0), SubTree(0, l1, r1)) => Self::subtree(
+            (SubTree(a, l0, r0), SubTree(b, l1, r1)) => Self::subtree(
                 0,
-                l0.clone().lift(*a).mask(l1),
-                r0.clone().lift(*a).mask(r1),
+                l0.clone().lift(*a).mask(&l1.clone().lift(*b)),
+                r0.clone().lift(*a).mask(&r1.clone().lift(*b)),
             )
             .norm(),
-            (a @ SubTree(..), SubTree(..)) => a.clone(),
+        }
+    }
+
+    /// Mask out a specific IdTree
+    pub fn mask_out(self, id: &IdTree) -> Self {
+        match (self, id) {
+            (_, IdTree::One) => EventTree::Leaf(0),
+            (a, IdTree::Zero) => a,
+            (a @ EventTree::Leaf(_), IdTree::SubTree(l, r)) => {
+                Self::subtree(0, a.clone().mask_out(l), a.clone().mask_out(r)).norm()
+            }
+            (EventTree::SubTree(a, l0, r0), IdTree::SubTree(l1, r1)) => {
+                Self::subtree(0, l0.lift(a).mask_out(l1), r0.lift(a).mask_out(r1))
+            }
         }
     }
 
@@ -700,5 +712,13 @@ mod tests {
 
         let recombined = e.clone().get(&l).join(e.clone().get(&r));
         assert_eq!(recombined, e);
+    }
+
+    #[test]
+    fn test_mask_out_1() {
+        let e: EventTree = "(11, (2, 0, 13), 3)".parse().unwrap();
+        let id: IdTree = "(1, (0, 1))".parse().unwrap();
+
+        assert_eq!(e.mask_out(&id).to_string(), "(0, 0, (0, 14, 0))");
     }
 }
