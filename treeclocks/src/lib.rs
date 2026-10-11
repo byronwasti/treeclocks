@@ -1,5 +1,3 @@
-#![doc = include_str!("../../README.md")]
-
 pub mod event_tree;
 pub mod id_tree;
 pub mod itc_map;
