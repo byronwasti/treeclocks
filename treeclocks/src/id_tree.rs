@@ -55,7 +55,14 @@ impl IdTree {
     }
 
     /// Consumes to create many Ids
+    ///
+    /// # Panics
+    ///
+    /// Panics if `count` is 0. Forking an id into nothing would drop it, and
+    /// the interval space it owns is not recoverable afterwards.
     pub fn fork_many(self, count: usize) -> Vec<Self> {
+        assert!(count > 0, "IdTree::fork_many: `count` must be at least 1");
+
         if count == 1 {
             return vec![self];
         }
@@ -115,6 +122,18 @@ impl IdTree {
 
     fn is_zero(&self) -> bool {
         matches!(self, IdTree::Zero)
+    }
+
+    /// Whether this id owns no part of the interval.
+    ///
+    /// Unlike a bare `matches!(id, IdTree::Zero)` check this also covers
+    /// non-normalized forms such as `(0, 0)` and `((0, 0), 0)`.
+    pub fn owns_nothing(&self) -> bool {
+        match self {
+            IdTree::Zero => true,
+            IdTree::One => false,
+            IdTree::SubTree(l, r) => l.owns_nothing() && r.owns_nothing(),
+        }
     }
 }
 
@@ -180,6 +199,31 @@ mod tests {
         assert_eq!(&ids[2].to_string(), "(0, (0, 1))");
         assert_eq!(&ids[3].to_string(), "(((1, 0), 0), 0)");
         assert_eq!(&ids[4].to_string(), "(((0, 1), 0), 0)");
+    }
+
+    #[test]
+    #[should_panic(expected = "must be at least 1")]
+    fn test_fork_multi_zero_panics() {
+        // Used to hand back 2 ids for a request of 0.
+        let _ = IdTree::one().fork_many(0);
+    }
+
+    #[test]
+    fn test_owns_nothing() {
+        assert!(IdTree::zero().owns_nothing());
+        assert!(!IdTree::one().owns_nothing());
+
+        // Non-normalized forms count too.
+        assert!(IdTree::subtree(IdTree::zero(), IdTree::zero()).owns_nothing());
+        assert!(
+            IdTree::subtree(
+                IdTree::subtree(IdTree::zero(), IdTree::zero()),
+                IdTree::zero()
+            )
+            .owns_nothing()
+        );
+
+        assert!(!IdTree::subtree(IdTree::zero(), IdTree::one()).owns_nothing());
     }
 
     #[test]
