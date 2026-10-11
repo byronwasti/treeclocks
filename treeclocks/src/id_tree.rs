@@ -117,8 +117,8 @@ impl IdTree {
         }
     }
 
-    fn is_zero(&self) -> bool {
-        matches!(self, IdTree::Zero)
+    pub fn is_zero(&self) -> bool {
+        matches!(self.clone().norm(), IdTree::Zero)
     }
 }
 

@@ -393,7 +393,7 @@ impl ItcIndex {
             (ItcIndex::SubTree(l0, r0), IdTree::SubTree(l1, r1)) => {
                 let l = l0.purge(l1, idx);
                 let r = r0.purge(r1, idx);
-                ItcIndex::SubTree(Box::new(l), Box::new(r))
+                ItcIndex::SubTree(Box::new(l), Box::new(r)).norm()
             }
             (s, _) => s,
         }

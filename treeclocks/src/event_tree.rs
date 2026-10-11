@@ -46,6 +46,7 @@ impl EventTree {
     }
 
     pub fn event(self, id: &IdTree) -> Self {
+        assert!(!id.is_zero());
         let fill = self.fill(id);
         if fill == self {
             #[allow(non_snake_case)]
@@ -764,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "owns no part of the interval")]
+    #[should_panic]
     fn test_event_with_zero_id_panics() {
         // Used to hit `unreachable!()` deep inside `grow`.
         let _ = EventTree::Leaf(0).event(&IdTree::zero());
@@ -777,5 +778,26 @@ mod tests {
 
         assert_ne!(a, b);
         assert_eq!(a.partial_cmp(&b), Some(Ordering::Less));
+    }
+
+    #[test]
+    fn test_fill_0() {
+        let e: EventTree = "(3, 0, 2)".parse().unwrap();
+        let id: IdTree = "(1, 0)".parse().unwrap();
+        assert_eq!(e.fill(&id).to_string(), "5");
+    }
+
+    #[test]
+    fn test_fill_1() {
+        let e: EventTree = "(3, (0, 0, 3), 2)".parse().unwrap();
+        let id: IdTree = "(1, 0)".parse().unwrap();
+        assert_eq!(e.fill(&id).to_string(), "(5, 1, 0)");
+    }
+
+    #[test]
+    fn test_fill_2() {
+        let e: EventTree = "(3, (0, 0, 3), 2)".parse().unwrap();
+        let id: IdTree = "((0, 1), 0)".parse().unwrap();
+        assert_eq!(e.fill(&id).to_string(), "(3, (0, 0, 3), 2)");
     }
 }
