@@ -2,7 +2,9 @@ use crate::{EventTree, IdTree};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-pub mod tree;
+mod tree;
+
+pub use tree::ItcMapTree;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -95,7 +97,7 @@ impl<T> ItcMap<T> {
                 }
                 self.allocate(id.clone(), value)
             } else {
-                panic!("Fundamental logic bug in ItcMap.");
+                panic!("Index does not match data store. Fundamental logic bug in treeclocks.");
             }
         } else {
             self.allocate(id.clone(), value)
@@ -186,6 +188,32 @@ impl<T> ItcMap<T> {
             },
             combine_fn,
         )
+    }
+
+    pub fn to_itc_map_tree<'a>(&'a self) -> ItcMapTree<'a, T> {
+        self.to_tree_inner(&self.index)
+    }
+
+    fn to_tree_inner<'a>(&'a self, index: &ItcIndex) -> ItcMapTree<'a, T> {
+        match &index {
+            ItcIndex::Unknown => ItcMapTree::Unknown,
+            ItcIndex::Leaf(idx) => {
+                let val = self.data[*idx].as_ref().expect("Corrupted index");
+                ItcMapTree::Leaf {
+                    timestamp: self
+                        .timestamp
+                        .clone()
+                        .get_exact(&val.0)
+                        .expect("Corrupted index"),
+                    id_tree: &val.0,
+                    value: &val.1,
+                }
+            }
+            ItcIndex::SubTree(l, r) => ItcMapTree::SubTree(
+                Box::new(self.to_tree_inner(l)),
+                Box::new(self.to_tree_inner(r)),
+            ),
+        }
     }
 }
 
