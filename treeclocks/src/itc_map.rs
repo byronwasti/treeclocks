@@ -29,6 +29,10 @@ impl<T> ItcMap<T> {
         &self.timestamp
     }
 
+    pub fn set_timestamp(&mut self, timestamp: EventTree) {
+        self.timestamp = timestamp;
+    }
+
     /// Looks up the value stored under exactly `id`.
     ///
     /// Only an exact match returns a value. An `id` that merely overlaps one
