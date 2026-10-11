@@ -17,6 +17,7 @@ impl EventTree {
         Self::default()
     }
 
+    /// Does not return a normalized subtree, you must manually call `norm`.
     pub fn subtree(val: u64, left: EventTree, right: EventTree) -> Self {
         Self::SubTree(val, Box::new(left), Box::new(right))
     }
@@ -52,7 +53,7 @@ impl EventTree {
             #[allow(non_snake_case)]
             let N = self.depth(0);
             let (tree, _) = self.grow(id, N + 1);
-            tree
+            tree.norm()
         } else {
             fill
         }
@@ -147,7 +148,7 @@ impl EventTree {
                 Self::subtree(0, a.clone().mask_out(l), a.clone().mask_out(r)).norm()
             }
             (EventTree::SubTree(a, l0, r0), IdTree::SubTree(l1, r1)) => {
-                Self::subtree(0, l0.lift(a).mask_out(l1), r0.lift(a).mask_out(r1))
+                Self::subtree(0, l0.lift(a).mask_out(l1), r0.lift(a).mask_out(r1)).norm()
             }
         }
     }
@@ -255,7 +256,7 @@ impl EventTree {
         }
     }
 
-    // TODO: This is bugged I think
+    /// IdTree must be non-zero
     #[allow(non_snake_case)]
     fn grow(&self, id: &IdTree, N: u64) -> (Self, u64) {
         match (id, self) {
@@ -292,7 +293,7 @@ impl EventTree {
                     }
                 }
             }
-            _ => unreachable!(),
+            _ => panic!("Failed precondition"),
         }
     }
 }
@@ -304,6 +305,7 @@ impl Default for EventTree {
 }
 
 impl PartialOrd for EventTree {
+    /// Only works if both EventTrees are normalized.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         use EventTree::*;
         match (self, other) {
@@ -799,5 +801,192 @@ mod tests {
         let e: EventTree = "(3, (0, 0, 3), 2)".parse().unwrap();
         let id: IdTree = "((0, 1), 0)".parse().unwrap();
         assert_eq!(e.fill(&id).to_string(), "(3, (0, 0, 3), 2)");
+    }
+
+    /// Asserts `e` is in the paper's normal form.
+    ///
+    /// `norm` is idempotent and canonical, so a tree is already normalized
+    /// exactly when normalizing it is a no-op. Normal form is what makes the
+    /// derived `PartialEq`/`Hash` on `EventTree` mean "same set of events":
+    /// outside it, one event history has many representations.
+    fn assert_normalized(e: &EventTree, what: &str) {
+        assert_eq!(
+            e.norm(),
+            *e,
+            "{what} returned {e}, which is not in normal form (should be {})",
+            e.norm()
+        );
+    }
+
+    // -------------------------------------------------------------------
+    // `mask_out` does not normalize its SubTree/SubTree result
+    //
+    // Every other arm of `mask_out` ends in `.norm()`, and so does every arm
+    // of its siblings `get`, `mask` and `diff`. The `(SubTree, SubTree)` arm
+    // does not, so any `mask_out` that recurses through a SubTree id can
+    // return a denormalized tree.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_mask_out_result_is_normalized() {
+        // The single event lives on the left, and is exactly what gets masked
+        // out, so the result is the empty history: `0`.
+        let e: EventTree = "(0, 0, 1)".parse().unwrap();
+        let id: IdTree = "(0, 1)".parse().unwrap();
+
+        let masked = e.mask_out(&id);
+        assert_normalized(&masked, "mask_out");
+        assert_eq!(masked.to_string(), "0");
+        assert_eq!(masked, EventTree::Leaf(0));
+    }
+
+    #[test]
+    fn test_mask_out_result_is_normalized_nested() {
+        // Both events are masked out, so this is also the empty history.
+        let e: EventTree = "(0, (0, 0, 1), (0, 0, 1))".parse().unwrap();
+        let id: IdTree = "((0, 1), (0, 1))".parse().unwrap();
+
+        let masked = e.mask_out(&id);
+        assert_normalized(&masked, "mask_out");
+        assert_eq!(masked, EventTree::Leaf(0));
+    }
+
+    #[test]
+    fn test_mask_out_result_is_normalized_partial() {
+        // Here events do survive, so the bug is not just "zero prints wrong":
+        // the surviving `2` is left sitting under a redundant level of nesting.
+        let e: EventTree = "(0, (0, 0, 1), (0, 0, 2))".parse().unwrap();
+        let id: IdTree = "((0, 1), 0)".parse().unwrap();
+
+        let masked = e.mask_out(&id);
+        assert_normalized(&masked, "mask_out");
+        assert_eq!(masked.to_string(), "(0, 0, (0, 0, 2))");
+    }
+
+    #[test]
+    fn test_mask_out_result_survives_display_roundtrip() {
+        // `FromStr` normalizes, so a denormalized result does not round-trip:
+        // serializing and reparsing a timestamp silently changes it.
+        let e: EventTree = "(0, 0, 1)".parse().unwrap();
+        let id: IdTree = "(0, 1)".parse().unwrap();
+
+        let masked = e.mask_out(&id);
+        let reparsed: EventTree = masked.to_string().parse().unwrap();
+        assert_eq!(masked, reparsed);
+    }
+
+    #[test]
+    fn test_mask_out_result_hashes_as_its_own_value() {
+        // `EventTree` derives `Hash` and `Eq`, so it is usable as a map key.
+        // A denormalized result hashes differently from the same history in
+        // normal form, so lookups miss.
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        fn hash(e: &EventTree) -> u64 {
+            let mut h = DefaultHasher::new();
+            e.hash(&mut h);
+            h.finish()
+        }
+
+        let e: EventTree = "(0, 0, 1)".parse().unwrap();
+        let id: IdTree = "(0, 1)".parse().unwrap();
+        let masked = e.mask_out(&id);
+
+        assert_eq!(hash(&masked), hash(&EventTree::Leaf(0)));
+    }
+
+    #[test]
+    fn test_mask_out_then_join_is_recoverable_by_eq() {
+        // `get`/`mask_out` split a timestamp into two halves that rejoin to the
+        // original. Comparing a `mask_out` half against a freshly built tree
+        // for equality should work; it does not, because only one side is
+        // normalized.
+        let e: EventTree = "(0, (0, 0, 1), (0, 0, 2))".parse().unwrap();
+        let id: IdTree = "((0, 1), 0)".parse().unwrap();
+
+        let kept = e.clone().get(&id);
+        let dropped = e.clone().mask_out(&id);
+
+        // Both halves describe the same history whichever way it is computed.
+        assert_eq!(dropped, e.clone().diff(&kept));
+    }
+
+    #[test]
+    fn test_partial_ord_consistent_with_eq_for_mask_out_result() {
+        // The two bugs compose: a public-API call produces a value that
+        // compares `Some(Equal)` to `Leaf(0)` while also being `!=` it, so
+        // `a <= b && b <= a && a != b` all hold at once.
+        let e: EventTree = "(0, 0, 1)".parse().unwrap();
+        let id: IdTree = "(0, 1)".parse().unwrap();
+        let masked = e.mask_out(&id);
+        let empty = EventTree::Leaf(0);
+
+        assert_eq!(
+            masked.partial_cmp(&empty) == Some(Ordering::Equal),
+            masked == empty,
+            "partial_cmp says {:?} but == says {} for {masked} vs {empty}",
+            masked.partial_cmp(&empty),
+            masked == empty
+        );
+    }
+
+    // -------------------------------------------------------------------
+    // `grow`'s unstated precondition
+    //
+    // `grow` is a partial function, exactly as in the paper: it has no case
+    // for `(One, SubTree)` or for a `Zero` id, and it does not normalize. That
+    // is sound only because `event` calls it just when `fill(id, e) == e`,
+    // which forces every `One` in the id to sit over a `Leaf` of the event
+    // tree. Hand-built inputs that look perfectly well-formed -- normalized
+    // id, normalized event tree -- can still sit outside it, so the
+    // precondition is worth pinning down rather than leaving implicit.
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_grow_precondition_holds_wherever_event_calls_it() {
+        // Each of these pairs reaches `unreachable!()` or a denormalized
+        // result if handed straight to `grow`, and each is also outside
+        // `grow`'s domain: `fill` changes the tree, so `event` returns the
+        // filled tree and never calls `grow` at all.
+        let cases: &[(&str, &str, &str)] = &[
+            // (event tree, id, expected `event` result)
+            ("(0, 0, 1)", "(1, 0)", "1"),
+            ("(0, 0, 1)", "1", "1"),
+            ("(0, (0, 0, 1), (0, 0, 1))", "((1, 0), 1)", "1"),
+        ];
+
+        for (es, is, expected) in cases {
+            let e: EventTree = es.parse().unwrap();
+            let id: IdTree = is.parse().unwrap();
+
+            assert_ne!(
+                e.fill(&id),
+                e,
+                "grow's precondition fill(id, e) == e unexpectedly holds for \
+                 e={es} id={is}; grow is partial on this input"
+            );
+            let got = e.clone().event(&id);
+            assert_eq!(got.to_string(), *expected, "event({es}, {is})");
+            assert_normalized(&got, "event");
+            assert!(got > e, "event({es}, {is}) = {got} did not add an event");
+        }
+    }
+
+    #[test]
+    fn test_event_result_is_normalized_when_grow_is_used() {
+        // The complementary case: inputs where `fill` is a no-op, so `event`
+        // really does go through `grow`. `grow` does not normalize, so this is
+        // what actually protects `event`'s output.
+        let ids = IdTree::one().fork_many(4);
+        for id in &ids {
+            let mut e = EventTree::new();
+            for _ in 0..6 {
+                let next = e.clone().event(id);
+                assert_normalized(&next, "event");
+                assert!(next > e, "event({e}, {id}) = {next} did not grow");
+                e = next;
+            }
+        }
     }
 }
