@@ -1,7 +1,8 @@
 use crate::IdTree;
 
-use super::*;
-
+/// Recursive form of the ItcMap
+///
+/// Essentially a merged ItcIndex and EventTree
 pub enum ItcMapTree<'a, T> {
     Unknown,
     Leaf {
@@ -10,31 +11,4 @@ pub enum ItcMapTree<'a, T> {
         value: &'a T,
     },
     SubTree(Box<ItcMapTree<'a, T>>, Box<ItcMapTree<'a, T>>),
-}
-
-impl<T> ItcMap<T> {
-    pub fn tree<'a>(&'a self) -> ItcMapTree<'a, T> {
-        self.tree_inner(&self.index)
-    }
-
-    fn tree_inner<'a>(&'a self, index: &ItcIndex) -> ItcMapTree<'a, T> {
-        match &index {
-            ItcIndex::Unknown => ItcMapTree::Unknown,
-            ItcIndex::Leaf(idx) => {
-                let val = self.data[*idx].as_ref().expect("Corrupted index");
-                ItcMapTree::Leaf {
-                    timestamp: self
-                        .timestamp
-                        .clone()
-                        .get_exact(&val.0)
-                        .expect("Corrupted index"),
-                    id_tree: &val.0,
-                    value: &val.1,
-                }
-            }
-            ItcIndex::SubTree(l, r) => {
-                ItcMapTree::SubTree(Box::new(self.tree_inner(l)), Box::new(self.tree_inner(r)))
-            }
-        }
-    }
 }
