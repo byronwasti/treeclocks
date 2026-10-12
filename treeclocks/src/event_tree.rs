@@ -46,6 +46,7 @@ impl EventTree {
         }
     }
 
+    /// Panics if IdTree is Zero
     pub fn event(self, id: &IdTree) -> Self {
         assert!(!id.is_zero());
         let fill = self.fill(id);

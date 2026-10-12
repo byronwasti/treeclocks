@@ -3,6 +3,7 @@ use crate::IdTree;
 /// Recursive form of the ItcMap
 ///
 /// Essentially a merged ItcIndex and EventTree
+#[derive(Debug, Clone, PartialEq)]
 pub enum ItcMapTree<'a, T> {
     Unknown,
     Leaf {
