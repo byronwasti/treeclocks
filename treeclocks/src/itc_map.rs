@@ -159,13 +159,13 @@ impl<T> ItcMap<T> {
         self.timestamp = ts;
     }
 
-    pub fn map_recursive<U, L, C>(&self, leaf_fn: &L, combine_fn: &C) -> U
+    pub fn fold_recursive<U, L, C>(&self, leaf_fn: &L, combine_fn: &C) -> U
     where
         U: Default,
         L: Fn(&T) -> U,
         C: Fn(U, U) -> U,
     {
-        self.index.map_recursive(
+        self.index.fold_recursive(
             &|idx: usize| {
                 let value = self.data[idx].as_ref().map(|(_, v)| v);
                 if let Some(value) = value {
@@ -176,6 +176,15 @@ impl<T> ItcMap<T> {
             },
             combine_fn,
         )
+    }
+
+    pub fn map_mut<F>(&mut self, f: F)
+    where
+        F: Fn(&mut IdTree, &mut T) -> T,
+    {
+        for (id, v) in self.data.iter_mut().filter_map(|x| x.as_mut()) {
+            *v = f(id, v)
+        }
     }
 
     pub fn to_itc_map_tree<'a>(&'a self) -> ItcMapTree<'a, T> {
@@ -440,7 +449,7 @@ impl ItcIndex {
         idxs
     }
 
-    fn map_recursive<U, L, C>(&self, leaf_fn: &L, combine_fn: &C) -> U
+    fn fold_recursive<U, L, C>(&self, leaf_fn: &L, combine_fn: &C) -> U
     where
         U: Default,
         L: Fn(usize) -> U,
@@ -450,8 +459,8 @@ impl ItcIndex {
             ItcIndex::Unknown => U::default(),
             ItcIndex::Leaf(idx) => leaf_fn(*idx),
             ItcIndex::SubTree(l, r) => combine_fn(
-                l.map_recursive(leaf_fn, combine_fn),
-                r.map_recursive(leaf_fn, combine_fn),
+                l.fold_recursive(leaf_fn, combine_fn),
+                r.fold_recursive(leaf_fn, combine_fn),
             ),
         }
     }
@@ -957,7 +966,7 @@ mod tests {
     }
 
     #[test]
-    fn test_map_recursive() {
+    fn test_fold_recursive() {
         let mut map0: ItcMap<i32> = ItcMap::new();
         let mut map1: ItcMap<i32> = ItcMap::new();
         let i = IdTree::one();
@@ -972,9 +981,26 @@ mod tests {
         map1.insert(i1.clone(), 12);
         map1.insert(i2.clone(), 5);
 
-        let res0 = map0.map_recursive(&|x| *x, &|x, y| x - y);
-        let res1 = map1.map_recursive(&|x| *x, &|x, y| x - y);
+        let res0 = map0.fold_recursive(&|x| *x, &|x, y| x - y);
+        let res1 = map1.fold_recursive(&|x| *x, &|x, y| x - y);
         assert_eq!(res0, -31);
         assert_eq!(res1, 7);
+    }
+
+    #[test]
+    fn test_map_mut() {
+        let mut map0: ItcMap<i32> = ItcMap::new();
+        let i = IdTree::one();
+        let (i, i2) = i.fork();
+        let (i0, i1) = i.fork();
+        map0.insert(i0.clone(), 5);
+        map0.insert(i1.clone(), 12);
+        map0.insert(i2.clone(), 24);
+
+        map0.map_mut(|_, v| *v*2);
+
+        assert_eq!(map0.get(&i0), Some(&10));
+        assert_eq!(map0.get(&i1), Some(&24));
+        assert_eq!(map0.get(&i2), Some(&48));
     }
 }
