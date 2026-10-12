@@ -62,6 +62,13 @@ impl<T> ItcMap<T> {
             .map(|(i, d)| (i, d))
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&mut IdTree, &mut T)> {
+        self.data
+            .iter_mut()
+            .filter_map(|x| x.as_mut())
+            .map(|(i, d)| (i, d))
+    }
+
     pub fn insert(&mut self, id: IdTree, value: T) -> Vec<(IdTree, T)> {
         self.update_timestamp(&id);
         self.insert_without_event(id, value)
@@ -176,15 +183,6 @@ impl<T> ItcMap<T> {
             },
             combine_fn,
         )
-    }
-
-    pub fn map_mut<F>(&mut self, f: F)
-    where
-        F: Fn(&mut IdTree, &mut T) -> T,
-    {
-        for (id, v) in self.data.iter_mut().filter_map(|x| x.as_mut()) {
-            *v = f(id, v)
-        }
     }
 
     pub fn to_itc_map_tree<'a>(&'a self) -> ItcMapTree<'a, T> {
