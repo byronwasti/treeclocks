@@ -97,17 +97,36 @@ impl EventTree {
 
     /// Returns the exact value at `id`, `None` if `id` points to a subtree.
     /// TODO: Also assert this is an Ideal IdTree; this only works for ideal
+    ///
+    /// NOTE: This doesn't work in a number of situations, even when working with
+    /// only Ideal IDTrees. Use `get(&id).max()` instead, way more reliable.
+    #[deprecated]
     pub fn get_exact(self, id: &IdTree) -> Option<u64> {
+        println!("self={self} id={id}");
         use EventTree::*;
         match (self, id) {
-            (_, IdTree::Zero) => None,
-            (Leaf(val), IdTree::One) => Some(val),
-            (SubTree(..), IdTree::One) => None,
-            (Leaf(val), IdTree::SubTree(..)) => Some(val),
-            (SubTree(val, l0, r0), IdTree::SubTree(l1, r1)) => l0
-                .lift(val)
-                .get_exact(l1)
-                .or_else(|| r0.lift(val).get_exact(r1)),
+            (_, IdTree::Zero) => {
+                println!("None");
+                None
+            }
+            (Leaf(val), IdTree::One) => {
+                println!("Some");
+                Some(val)
+            }
+            (SubTree(..), IdTree::One) => {
+                println!("None");
+                None
+            }
+            (Leaf(val), IdTree::SubTree(..)) => {
+                println!("Some");
+                Some(val)
+            }
+            (SubTree(val, l0, r0), IdTree::SubTree(l1, r1)) => {
+                println!("Branch");
+                l0.lift(val)
+                    .get_exact(l1)
+                    .or_else(|| r0.lift(val).get_exact(r1))
+            }
         }
     }
 
@@ -214,7 +233,7 @@ impl EventTree {
         }
     }
 
-    fn max(&self) -> u64 {
+    pub fn max(&self) -> u64 {
         use EventTree::*;
         match self {
             Leaf(val) => *val,
@@ -760,7 +779,8 @@ mod tests {
         let empty = IdTree::subtree(
             IdTree::subtree(IdTree::zero(), IdTree::zero()),
             IdTree::zero(),
-        ).norm();
+        )
+        .norm();
 
         assert!(!EventTree::Leaf(2).contains(&empty));
         assert!(!EventTree::subtree(1, EventTree::Leaf(0), EventTree::Leaf(3)).contains(&empty));
@@ -989,5 +1009,47 @@ mod tests {
                 e = next;
             }
         }
+    }
+
+    #[test]
+    fn test_etree_regression_1() {
+        let id: IdTree = "((0, (((0, (1, 0)), 0), 0)), 0)".parse().unwrap();
+        let ts0: EventTree = "(5, (3, (0, (1, (0, (0, 1, 0), 3), 0), 0), (2, (0, (0, 0, (2, (0, 0, 1), 0)), 0), 1)), 0)".parse().unwrap();
+        let ts1: EventTree =
+            "(5, (3, (0, (1, (0, (0, 1, 0), 3), 0), 0), (2, (0, (0, 0, (2, 1, 0)), 0), 1)), 0)"
+                .parse()
+                .unwrap();
+
+        let ts = ts0.event(&id);
+        assert!(ts.get_exact(&id).is_some());
+        assert!(ts1.get_exact(&id).is_some());
+    }
+
+    #[test]
+    fn test_etree_regression_2() {
+        let id: IdTree = "((0, (((0, (1, 0)), 0), 0)), 0) ".parse().unwrap();
+        let ts0: EventTree =
+            "(5, (3, (0, (1, (0, (0, 1, 0), 3), 0), 0), (2, (0, (0, 0, (2, 1, 0)), 0), 1)), 0)"
+                .parse()
+                .unwrap();
+
+        let ts = ts0.event(&id);
+        assert!(ts.get_exact(&id).is_some());
+    }
+
+    #[test]
+    fn test_etree_regression_3() {
+        let ts0: EventTree = "(5, (3, (0, (1, (0, (0, 1, 0), 3), 0), 0), (2, (0, (0, 0, (2, (0, 0, 1), 0)), 1), 3)), 0)".parse().unwrap();
+        let ts1: EventTree =
+            "(5, (3, (0, (1, (0, (0, 1, 0), 3), 0), 0), (2, (0, (0, 0, (2, 1, 0)), 0), 1)), 0)"
+                .parse()
+                .unwrap();
+
+        let diff = ts1.clone().diff(&ts0);
+
+        assert_eq!(
+            diff.to_string(),
+            "(0, (0, 0, (0, (0, (0, 0, (0, (0, 1, 0), 0)), 0), 0)), 0)"
+        );
     }
 }

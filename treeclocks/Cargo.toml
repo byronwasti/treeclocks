@@ -1,6 +1,6 @@
 [package]
 name = "treeclocks"
-version = "0.10.1"
+version = "0.10.2"
 edition = "2024"
 readme = "../README.md"
 authors = [
@@ -19,6 +19,10 @@ serde = { version = "1.0.218", features = ["derive"], optional = true }
 thiserror = { version = "2.0.12", optional = true }
 
 [features]
-default = ["parse"]
+default = ["parse", "serde"]
 serde = ["dep:serde"]
 parse = ["dep:thiserror"]
+
+[dev-dependencies]
+serde_json = "1.0.154"
+serde = { version = "1.0.218", features = ["derive"] }

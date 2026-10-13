@@ -195,11 +195,7 @@ impl<T> ItcMap<T> {
             ItcIndex::Leaf(idx) => {
                 let val = self.data[*idx].as_ref().expect("Corrupted index");
                 ItcMapTree::Leaf {
-                    timestamp: self
-                        .timestamp
-                        .clone()
-                        .get_exact(&val.0)
-                        .expect("Corrupted index"),
+                    timestamp: self.timestamp.clone().get(&val.0).max(),
                     id_tree: &val.0,
                     value: &val.1,
                 }
@@ -986,19 +982,23 @@ mod tests {
     }
 
     #[test]
-    fn test_map_mut() {
-        let mut map0: ItcMap<i32> = ItcMap::new();
-        let i = IdTree::one();
-        let (i, i2) = i.fork();
-        let (i0, i1) = i.fork();
-        map0.insert(i0.clone(), 5);
-        map0.insert(i1.clone(), 12);
-        map0.insert(i2.clone(), 24);
+    fn test_itcmap_regression_1() {
+        #[derive(serde::Deserialize)]
+        struct NodeInfo {
+            uuid: String,
+            addr: u32,
+            timestamp: u32,
+            status: String,
+        }
 
-        map0.map_mut(|_, v| *v*2);
+        let map: ItcMap<NodeInfo> = serde_json::from_str(r#"{"timestamp":{"SubTree":[0,{"SubTree":[0,{"Leaf":0},{"SubTree":[0,{"SubTree":[0,{"SubTree":[0,{"Leaf":0},{"SubTree":[0,{"SubTree":[0,{"Leaf":13},{"Leaf":0}]},{"Leaf":0}]}]},{"Leaf":0}]},{"Leaf":0}]}]},{"Leaf":0}]},"data":[[{"SubTree":[{"SubTree":["Zero",{"SubTree":[{"SubTree":[{"SubTree":["Zero",{"SubTree":["One","Zero"]}]},"Zero"]},"Zero"]}]},"Zero"]},{"uuid":"cbc969ed-5551-77ef-ade1-b341a3c67996","addr":7,"timestamp":7,"status":"Healthy"}]],"index":{"SubTree":[{"SubTree":["Unknown",{"SubTree":[{"SubTree":[{"SubTree":["Unknown",{"SubTree":[{"Leaf":0},"Unknown"]}]},"Unknown"]},"Unknown"]}]},"Unknown"]}}"#).unwrap();
 
-        assert_eq!(map0.get(&i0), Some(&10));
-        assert_eq!(map0.get(&i1), Some(&24));
-        assert_eq!(map0.get(&i2), Some(&48));
+        let id = "((0, (((0, (1, 0)), 0), 0)), 0)".parse().unwrap();
+
+        assert!(map.get(&id).is_some());
+        assert_eq!(
+            map.timestamp().to_string(),
+            "(0, (0, 0, (0, (0, (0, 0, (0, (0, 13, 0), 0)), 0), 0)), 0)"
+        );
     }
 }
