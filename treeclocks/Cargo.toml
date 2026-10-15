@@ -1,6 +1,6 @@
 [package]
 name = "treeclocks"
-version = "0.10.3"
+version = "0.10.4"
 edition = "2024"
 readme = "../README.md"
 authors = [

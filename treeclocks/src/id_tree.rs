@@ -118,16 +118,10 @@ impl IdTree {
     }
 
     pub fn is_zero(&self) -> bool {
-        assert_eq!(&self.clone().norm(), self);
         matches!(self, IdTree::Zero)
     }
 
-    /// # Panics
-    ///
-    /// Panics if either `self` or `other` are not `.norm()` or IdTree::Zero
     pub fn contains(&self, other: &IdTree) -> bool {
-        assert!(!other.is_zero());
-        assert!(!self.is_zero());
         use IdTree::*;
         match (self, other) {
             (_, Zero) => true,
@@ -140,14 +134,8 @@ impl IdTree {
         }
     }
 
-    /// # Panics
-    ///
-    /// Panics if either `self` or `other` are not `.norm()` or IdTree::Zero
     pub fn overlaps(&self, other: &IdTree) -> bool {
-        assert!(!other.is_zero());
-        assert!(!self.is_zero());
         use IdTree::*;
-
         match (self, other) {
             (_, Zero) => true,
             (Zero, _) => false,
