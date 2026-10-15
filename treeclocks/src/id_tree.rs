@@ -128,22 +128,18 @@ impl IdTree {
             (Zero, _) => false,
             (One, _) => true,
             (_, One) => false,
-            (SubTree(l0, r0), SubTree(l1, r1)) => {
-                l0.contains(l1) && r0.contains(r1)
-            }
+            (SubTree(l0, r0), SubTree(l1, r1)) => l0.contains(l1) && r0.contains(r1),
         }
     }
 
     pub fn overlaps(&self, other: &IdTree) -> bool {
         use IdTree::*;
         match (self, other) {
-            (_, Zero) => true,
+            (_, Zero) => false,
             (Zero, _) => false,
             (One, _) => true,
-            (_, One) => false,
-            (SubTree(l0, r0), SubTree(l1, r1)) => {
-                l0.contains(l1) || r0.contains(r1)
-            }
+            (_, One) => true,
+            (SubTree(l0, r0), SubTree(l1, r1)) => l0.overlaps(l1) || r0.overlaps(r1),
         }
     }
 }
@@ -210,6 +206,81 @@ mod tests {
         assert_eq!(&ids[2].to_string(), "(0, (0, 1))");
         assert_eq!(&ids[3].to_string(), "(((1, 0), 0), 0)");
         assert_eq!(&ids[4].to_string(), "(((0, 1), 0), 0)");
+    }
+
+    #[test]
+    fn test_contains() {
+        let one = IdTree::one();
+        let zero = IdTree::zero();
+        let (l, r) = one.clone().fork();
+
+        // Every id contains the empty id; the empty id contains only itself.
+        assert!(one.contains(&zero));
+        assert!(l.contains(&zero));
+        assert!(zero.contains(&zero));
+        assert!(!zero.contains(&one));
+        assert!(!zero.contains(&l));
+
+        // Containment is reflexive, and the full id contains everything.
+        assert!(one.contains(&one));
+        assert!(l.contains(&l));
+        assert!(one.contains(&l));
+        assert!(one.contains(&r));
+        assert!(!l.contains(&one));
+
+        // Siblings from a fork contain neither each other nor the parent.
+        assert!(!l.contains(&r));
+        assert!(!r.contains(&l));
+
+        let (ll, lr) = l.clone().fork();
+        assert!(l.contains(&ll));
+        assert!(l.contains(&lr));
+        assert!(!ll.contains(&lr));
+        assert!(!r.contains(&ll));
+
+        // A join contains both of its parts, but nothing more.
+        let joined = ll.clone().join(r.clone());
+        assert!(joined.contains(&ll));
+        assert!(joined.contains(&r));
+        assert!(!joined.contains(&lr));
+    }
+
+    #[test]
+    fn test_overlaps() {
+        let one = IdTree::one();
+        let zero = IdTree::zero();
+        let (l, r) = one.clone().fork();
+
+        // Nothing overlaps the empty id.
+        assert!(!one.overlaps(&zero));
+        assert!(!zero.overlaps(&one));
+        assert!(!zero.overlaps(&zero));
+        assert!(!l.overlaps(&zero));
+
+        // Overlap is reflexive on non-empty ids, and the full id overlaps them all.
+        assert!(one.overlaps(&one));
+        assert!(l.overlaps(&l));
+        assert!(one.overlaps(&l));
+        assert!(l.overlaps(&one));
+
+        // Forking produces disjoint ids.
+        assert!(!l.overlaps(&r));
+        assert!(!r.overlaps(&l));
+
+        let (ll, lr) = l.clone().fork();
+        assert!(!ll.overlaps(&lr));
+        assert!(!ll.overlaps(&r));
+        assert!(!r.overlaps(&ll));
+
+        // Containment implies overlap.
+        assert!(l.overlaps(&ll));
+        assert!(ll.overlaps(&l));
+
+        // Rejoining the halves recovers the overlap with each of them.
+        let joined = ll.clone().join(r.clone());
+        assert!(joined.overlaps(&ll));
+        assert!(joined.overlaps(&r));
+        assert!(!joined.overlaps(&lr));
     }
 
     #[test]
