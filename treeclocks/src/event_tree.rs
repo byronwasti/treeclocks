@@ -173,7 +173,7 @@ impl EventTree {
         }
     }
 
-    fn norm(&self) -> Self {
+    pub fn norm(&self) -> Self {
         use EventTree::*;
         match self {
             Leaf(_) => self.clone(),

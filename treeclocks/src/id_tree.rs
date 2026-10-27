@@ -1,3 +1,4 @@
+use crate::EventTree;
 use std::collections::VecDeque;
 
 #[cfg(feature = "parse")]
@@ -140,6 +141,15 @@ impl IdTree {
             (One, _) => true,
             (_, One) => true,
             (SubTree(l0, r0), SubTree(l1, r1)) => l0.overlaps(l1) || r0.overlaps(r1),
+        }
+    }
+
+    pub fn set_value(&self, value: u64) -> EventTree {
+        use IdTree::*;
+        match self {
+            Zero => EventTree::Leaf(0),
+            One => EventTree::Leaf(value),
+            SubTree(l, r) => EventTree::subtree(0, l.set_value(value), r.set_value(value)).norm(),
         }
     }
 }
