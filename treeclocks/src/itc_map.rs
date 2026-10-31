@@ -9,9 +9,9 @@ pub use tree::ItcMapTree;
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ItcMap<T> {
-    timestamp: EventTree,
-    data: Vec<Option<(IdTree, T)>>,
-    index: ItcIndex,
+    pub(crate) timestamp: EventTree,
+    pub(crate) data: Vec<Option<(IdTree, T)>>,
+    pub(crate) index: ItcIndex,
 }
 
 impl<T> ItcMap<T> {
@@ -286,7 +286,7 @@ impl<T: fmt::Display> fmt::Display for ItcMap<T> {
 /// various merging capabilities with partial-trees.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-enum ItcIndex {
+pub(crate) enum ItcIndex {
     #[default]
     Unknown,
     Leaf(usize),
