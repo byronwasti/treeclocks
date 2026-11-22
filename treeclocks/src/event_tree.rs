@@ -229,7 +229,7 @@ impl EventTree {
         use EventTree::*;
         match self {
             Leaf(val) => *val,
-            SubTree(val, _, _) => *val,
+            SubTree(val, l, r) => val + l.min().min(r.min()),
         }
     }
 

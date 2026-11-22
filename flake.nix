@@ -16,7 +16,10 @@
         devShells.default = mkShell rec {
           buildInputs = [
             # Rust
-            rust-bin.stable.latest.default
+            (rust-bin.stable.latest.default.override {
+                extensions = [ "rust-src" ];
+            })
+            rust-analyzer
           ];
 
           LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
