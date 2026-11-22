@@ -47,6 +47,14 @@ impl<T> ItcMap<T> {
             })
     }
 
+    pub fn get_many(&self, id: &IdTree) -> Vec<(&IdTree, &T)> {
+        let idxs = self.index.get_many(id);
+        idxs.iter()
+            .filter_map(|idx| self.data[*idx].as_ref())
+            .map(|(i, d)| (i, d))
+            .collect()
+    }
+
     pub fn len(&self) -> usize {
         self.data.iter().filter_map(|x| x.as_ref()).count()
     }
@@ -299,6 +307,7 @@ impl ItcIndex {
         Self::SubTree(Box::new(left), Box::new(right))
     }
 
+    // TODO: Rename to "get one" or something
     fn get(&self, id: &IdTree) -> Option<usize> {
         match (self, id) {
             (ItcIndex::Unknown, _) => None,
@@ -314,6 +323,29 @@ impl ItcIndex {
             // TODO: Should we handle partial-match cases? Are there any situations where our
             // IdTree we're looking up is _almost_ valid?
             _ => None,
+        }
+    }
+
+    fn get_many(&self, id: &IdTree) -> Vec<usize> {
+        match (self, id) {
+            (ItcIndex::Unknown, _) => vec![],
+            (_, IdTree::Zero) => vec![],
+            (ItcIndex::Leaf(idx), IdTree::One) => vec![*idx],
+            (ItcIndex::SubTree(l0, r0), IdTree::SubTree(l1, r1)) => {
+                let mut left = l0.get_many(l1);
+                let mut right = r0.get_many(r1);
+                left.append(&mut right);
+                left
+            }
+            (ItcIndex::SubTree(l0, r0), IdTree::One) => {
+                let mut left = l0.get_many(&IdTree::One);
+                let mut right = r0.get_many(&IdTree::One);
+                left.append(&mut right);
+                left
+            }
+            (ItcIndex::Leaf(idx), IdTree::SubTree(..)) => {
+                vec![*idx]
+            }
         }
     }
 

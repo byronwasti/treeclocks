@@ -225,11 +225,28 @@ impl EventTree {
         }
     }
 
-    fn min(&self) -> u64 {
+    pub fn min(&self) -> u64 {
         use EventTree::*;
         match self {
             Leaf(val) => *val,
             SubTree(val, l, r) => val + l.min().min(r.min()),
+        }
+    }
+
+    pub fn min_index(&self) -> (IdTree, u64) {
+        use EventTree::*;
+        match self {
+            Leaf(val) => (IdTree::One, *val),
+            SubTree(val, l, r) => {
+                let (li, lv) = l.min_index();
+                let (ri, rv) = r.min_index();
+
+                match lv.cmp(&rv) {
+                    Ordering::Less => (IdTree::subtree(li, IdTree::Zero), lv + val),
+                    Ordering::Greater => (IdTree::subtree(IdTree::Zero, ri), rv + val),
+                    Ordering::Equal => (IdTree::One, lv + val),
+                }
+            }
         }
     }
 
